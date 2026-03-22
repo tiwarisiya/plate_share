@@ -31,6 +31,23 @@ export default function RegisterDonor() {
     }));
   };
 
+  const saveProfileToLocal = () => {
+    if (typeof window === "undefined") return;
+
+    const profilePayload = {
+      restaurantName: formData.restaurantName,
+      email: formData.email,
+      address: formData.address,
+      city: formData.city,
+      state: formData.state,
+      zipCode: formData.zipCode,
+      foodTypes: formData.foodTypes,
+      pickupWindow: formData.pickupWindow,
+    };
+
+    localStorage.setItem("restaurantProfile", JSON.stringify(profilePayload));
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -52,13 +69,66 @@ export default function RegisterDonor() {
         password: formData.password,
       });
 
+      let hasSession = false;
+      let attemptedSignIn = false;
+
       if (authError) {
         console.error("Auth signup error:", authError);
-        throw new Error(`Account creation failed: ${authError.message}`);
+
+        const rateLimited = authError.message.toLowerCase().includes("rate limit");
+        if (!rateLimited) {
+          throw new Error(`Account creation failed: ${authError.message}`);
+        }
+
+        // If signup is rate-limited, the account may already exist. Try sign-in instead.
+        attemptedSignIn = true;
+        const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
+          email: formData.email,
+          password: formData.password,
+        });
+
+        if (signInError) {
+          if (signInError.message.includes("Email not confirmed")) {
+            throw new Error(
+              "Email rate limit exceeded. Your account may already exist but email confirmation is pending. Check your inbox, then sign in after confirming."
+            );
+          }
+
+          throw new Error(
+            "Email rate limit exceeded and automatic sign-in failed. Please wait a minute, then use Login or resend confirmation email."
+          );
+        }
+
+        hasSession = Boolean(signInData.session);
+      } else {
+        hasSession = Boolean(authData.session);
       }
 
-      if (!authData.user) {
-        throw new Error("Failed to create user account");
+      // Ensure we have an authenticated session before writing to donations.
+      // Some projects enforce RLS insert policies for authenticated users only.
+      if (!hasSession && !attemptedSignIn) {
+        const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
+          email: formData.email,
+          password: formData.password,
+        });
+
+        if (signInError) {
+          if (signInError.message.includes("Email not confirmed")) {
+            throw new Error(
+              "Account created, but your email must be confirmed before we can save donation details. Please confirm your email, then sign in and complete setup."
+            );
+          }
+
+          throw new Error(`Failed to create an authenticated session: ${signInError.message}`);
+        }
+
+        hasSession = Boolean(signInData.session);
+      }
+
+      if (!hasSession) {
+        throw new Error(
+          "Unable to start an authenticated session. Please sign in first, then try saving your donation details again."
+        );
       }
 
       // Then, save the donation data
@@ -72,19 +142,29 @@ export default function RegisterDonor() {
             state: formData.state,
             zip_code: formData.zipCode,
             food_type: formData.foodTypes,
-            pickup_time: formData.pickupWindow,
-            user_id: authData.user.id, // Link to the authenticated user
+            pickup_window: formData.pickupWindow,
           },
         ])
         .select();
 
       if (insertError) {
         console.error("Supabase insert error:", insertError);
+
+        if (insertError.message.toLowerCase().includes("row-level security")) {
+          throw new Error(
+            "Failed to save donation due to row-level security rules. You may need to confirm your email and sign in again before creating donation details."
+          );
+        }
+
         throw new Error(`Failed to save donation: ${insertError.message}`);
       }
 
       if (data && data.length > 0) {
         const donationId = data[0].id;
+        saveProfileToLocal();
+        if (typeof window !== "undefined") {
+          localStorage.setItem("restaurantDonationId", String(donationId));
+        }
         router.push(`/restaurant/success?id=${donationId}`);
       } else {
         throw new Error("No data returned from database");
@@ -296,7 +376,10 @@ export default function RegisterDonor() {
             {/* Demo Button */}
             <button
               type="button"
-              onClick={() => router.push("/restaurant/home")}
+              onClick={() => {
+                saveProfileToLocal();
+                router.push("/restaurant/home");
+              }}
               className="w-full rounded-full border-2 border-emerald-600 px-6 py-3 text-emerald-700 font-semibold shadow-sm hover:bg-emerald-50 transition"
             >
               Skip to Demo (View Home Screen)

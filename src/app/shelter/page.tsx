@@ -3,7 +3,7 @@ import React from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 
-export default function RestaurantEntry() {
+export default function ShelterEntry() {
   const router = useRouter();
 
   return (
@@ -15,25 +15,25 @@ export default function RestaurantEntry() {
               <Image src="/logo.svg" alt="Plate Share logo" width={112} height={112} />
             </div>
 
-            <h1 className="text-3xl font-semibold text-emerald-900 tracking-tight">Restaurant Portal</h1>
-            <p className="text-sm text-emerald-700">Choose how you'd like to proceed — quick login or create a donor account.</p>
+            <h1 className="text-3xl font-semibold text-emerald-900 tracking-tight">Shelter Portal</h1>
+            <p className="text-sm text-emerald-700">Choose how you'd like to proceed - quick login or create a shelter account.</p>
           </div>
 
           <div className="mt-8 flex flex-col gap-4">
             <button
-              aria-label="Restaurant login"
-              onClick={() => router.push('/restaurant/login')}
+              aria-label="Shelter login"
+              onClick={() => router.push("/shelter/login")}
               className="w-full rounded-full border-2 border-emerald-500 bg-white px-6 py-3 text-emerald-700 font-medium shadow-sm hover:bg-emerald-50 transition"
             >
               Login
             </button>
 
             <button
-              aria-label="Make an account as a donor"
-              onClick={() => router.push('/restaurant/register-donor')}
+              aria-label="Make an account as a shelter"
+              onClick={() => router.push("/shelter/register")}
               className="w-full rounded-full bg-emerald-600 px-6 py-3 text-white font-semibold shadow-md hover:bg-emerald-700 transition"
             >
-              Make an account as a donor
+              Make an account as a shelter
             </button>
           </div>
         </div>

@@ -1,10 +1,35 @@
 "use client";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+
+type AcceptedRequestNotification = {
+  id: string;
+  shelterName: string;
+  requestTitle: string;
+  pickupWindow: string;
+  location: string;
+  acceptedAt: string;
+  reminder: string;
+};
 
 export default function RestaurantHome() {
   const router = useRouter();
   const [activeMenu, setActiveMenu] = useState("home");
+  const [notifications, setNotifications] = useState<AcceptedRequestNotification[]>([]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const raw = localStorage.getItem("acceptedShelterRequests");
+    if (!raw) return;
+
+    try {
+      const parsed = JSON.parse(raw) as AcceptedRequestNotification[];
+      setNotifications(parsed);
+    } catch {
+      setNotifications([]);
+    }
+  }, []);
 
   // Sample shelter donation requests
   const shelters = [
@@ -39,6 +64,7 @@ export default function RestaurantHome() {
 
   const menuItems = [
     { id: "home", label: "Home", icon: "🏠" },
+    { id: "notifications", label: "Notifications", icon: "🔔" },
     { id: "profile", label: "My Profile", icon: "👤" },
     { id: "settings", label: "Settings", icon: "⚙️" },
     { id: "ai", label: "Ask AI", icon: "🤖" },
@@ -47,6 +73,24 @@ export default function RestaurantHome() {
 
   const handleMenuClick = (menuId: string) => {
     setActiveMenu(menuId);
+
+    if (menuId === "home") {
+      router.push("/restaurant/home");
+      return;
+    }
+
+    if (menuId === "notifications") {
+      return;
+    }
+
+    if (menuId === "profile") {
+      router.push("/restaurant/profile");
+      return;
+    }
+
+    if (menuId === "settings") {
+      router.push("/restaurant/settings");
+    }
   };
 
   const handleDonationRequest = (shelterId: number) => {
@@ -75,6 +119,11 @@ export default function RestaurantHome() {
             >
               <span className="text-xl">{item.icon}</span>
               <span>{item.label}</span>
+              {item.id === "notifications" && notifications.length > 0 && (
+                <span className="ml-auto rounded-full bg-emerald-600 px-2 py-0.5 text-xs font-bold text-white">
+                  {notifications.length}
+                </span>
+              )}
             </button>
           ))}
         </nav>
@@ -92,87 +141,135 @@ export default function RestaurantHome() {
       {/* Main Content */}
       <main className="flex-1 p-8">
         <div className="max-w-6xl mx-auto">
-          {/* Header */}
-          <div className="mb-8">
-            <h1 className="text-4xl font-bold text-emerald-900 mb-2">
-              Welcome Back
-            </h1>
-            <p className="text-emerald-700">
-              Browse donation requests from shelters in your area
-            </p>
-          </div>
-
-          {/* Shelter Requests Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {shelters.map((shelter) => (
-              <div
-                key={shelter.id}
-                className="bg-white rounded-xl border-2 border-emerald-100 shadow-md overflow-hidden hover:shadow-lg transition"
-              >
-                {/* Card Header */}
-                <div className="bg-emerald-50 p-4 border-b-2 border-emerald-100">
-                  <h3 className="text-lg font-bold text-emerald-900">
-                    {shelter.name}
-                  </h3>
-                  <p className="text-sm text-emerald-600 mt-1">{shelter.location}</p>
-                </div>
-
-                {/* Card Body */}
-                <div className="p-4 space-y-3">
-                  <div>
-                    <p className="text-xs font-semibold text-emerald-700 uppercase tracking-wide">
-                      Request
-                    </p>
-                    <p className="text-md font-semibold text-emerald-900">
-                      {shelter.requestType}
-                    </p>
-                  </div>
-
-                  <div>
-                    <p className="text-xs font-semibold text-emerald-700 uppercase tracking-wide">
-                      Meal Types Needed
-                    </p>
-                    <p className="text-sm text-emerald-800">{shelter.meals}</p>
-                  </div>
-
-                  <div className="flex gap-2">
-                    <div className="flex-1">
-                      <p className="text-xs font-semibold text-emerald-700 uppercase tracking-wide">
-                        Time
-                      </p>
-                      <p className="text-sm text-emerald-800">{shelter.time}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs font-semibold text-emerald-700 uppercase tracking-wide">
-                        Urgency
-                      </p>
-                      <span
-                        className={`inline-block px-3 py-1 rounded-full text-xs font-bold ${
-                          shelter.urgency === "High"
-                            ? "bg-red-100 text-red-700"
-                            : shelter.urgency === "Medium"
-                            ? "bg-yellow-100 text-yellow-700"
-                            : "bg-green-100 text-green-700"
-                        }`}
-                      >
-                        {shelter.urgency}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Card Footer */}
-                <div className="p-4 border-t border-emerald-100 bg-yellow-50">
-                  <button
-                    onClick={() => handleDonationRequest(shelter.id)}
-                    className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-2 rounded-lg transition"
-                  >
-                    Respond to Request
-                  </button>
-                </div>
+          {activeMenu === "notifications" ? (
+            <>
+              <div className="mb-8">
+                <h1 className="text-4xl font-bold text-emerald-900 mb-2">Notifications</h1>
+                <p className="text-emerald-700">
+                  Updates and reminders for shelter requests your restaurant has accepted.
+                </p>
               </div>
-            ))}
-          </div>
+
+              {notifications.length === 0 ? (
+                <div className="rounded-2xl border-2 border-emerald-100 bg-white p-8 shadow-md text-center">
+                  <p className="text-lg font-semibold text-emerald-900">No notifications yet</p>
+                  <p className="mt-2 text-emerald-700">
+                    Accept a shelter request to start seeing updates and reminders here.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {notifications.map((item) => (
+                    <div
+                      key={item.id}
+                      className="rounded-2xl border-2 border-emerald-100 bg-white p-6 shadow-md"
+                    >
+                      <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                        <h3 className="text-xl font-bold text-emerald-900">{item.shelterName}</h3>
+                        <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-bold text-emerald-700">
+                          Accepted
+                        </span>
+                      </div>
+
+                      <p className="mt-2 text-emerald-900 font-semibold">{item.requestTitle}</p>
+                      <p className="mt-2 text-sm text-emerald-700">Location: {item.location}</p>
+                      <p className="text-sm text-emerald-700">Pickup Window: {item.pickupWindow}</p>
+
+                      <div className="mt-3 rounded-lg border border-emerald-200 bg-yellow-50 p-3">
+                        <p className="text-sm font-medium text-emerald-900">Reminder: {item.reminder}</p>
+                      </div>
+
+                      <p className="mt-3 text-xs text-emerald-600">Accepted at: {item.acceptedAt}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
+          ) : (
+            <>
+              {/* Header */}
+              <div className="mb-8">
+                <h1 className="text-4xl font-bold text-emerald-900 mb-2">
+                  Welcome Back
+                </h1>
+                <p className="text-emerald-700">
+                  Browse donation requests from shelters in your area
+                </p>
+              </div>
+
+              {/* Shelter Requests Grid */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {shelters.map((shelter) => (
+                  <div
+                    key={shelter.id}
+                    className="bg-white rounded-xl border-2 border-emerald-100 shadow-md overflow-hidden hover:shadow-lg transition"
+                  >
+                    {/* Card Header */}
+                    <div className="bg-emerald-50 p-4 border-b-2 border-emerald-100">
+                      <h3 className="text-lg font-bold text-emerald-900">
+                        {shelter.name}
+                      </h3>
+                      <p className="text-sm text-emerald-600 mt-1">{shelter.location}</p>
+                    </div>
+
+                    {/* Card Body */}
+                    <div className="p-4 space-y-3">
+                      <div>
+                        <p className="text-xs font-semibold text-emerald-700 uppercase tracking-wide">
+                          Request
+                        </p>
+                        <p className="text-md font-semibold text-emerald-900">
+                          {shelter.requestType}
+                        </p>
+                      </div>
+
+                      <div>
+                        <p className="text-xs font-semibold text-emerald-700 uppercase tracking-wide">
+                          Meal Types Needed
+                        </p>
+                        <p className="text-sm text-emerald-800">{shelter.meals}</p>
+                      </div>
+
+                      <div className="flex gap-2">
+                        <div className="flex-1">
+                          <p className="text-xs font-semibold text-emerald-700 uppercase tracking-wide">
+                            Time
+                          </p>
+                          <p className="text-sm text-emerald-800">{shelter.time}</p>
+                        </div>
+                        <div>
+                          <p className="text-xs font-semibold text-emerald-700 uppercase tracking-wide">
+                            Urgency
+                          </p>
+                          <span
+                            className={`inline-block px-3 py-1 rounded-full text-xs font-bold ${
+                              shelter.urgency === "High"
+                                ? "bg-red-100 text-red-700"
+                                : shelter.urgency === "Medium"
+                                ? "bg-yellow-100 text-yellow-700"
+                                : "bg-green-100 text-green-700"
+                            }`}
+                          >
+                            {shelter.urgency}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Card Footer */}
+                    <div className="p-4 border-t border-emerald-100 bg-yellow-50">
+                      <button
+                        onClick={() => handleDonationRequest(shelter.id)}
+                        className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-2 rounded-lg transition"
+                      >
+                        Respond to Request
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
         </div>
       </main>
     </div>
