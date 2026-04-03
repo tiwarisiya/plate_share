@@ -1,277 +1,256 @@
 "use client";
-import React, { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 
-type AcceptedRequestNotification = {
+import React, { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import { getSupabaseClient } from "@/lib/supabaseClient";
+import {
+  getCurrentUserRole,
+  isRestaurantProfileComplete,
+  mapShelterStatusForUi,
+  ShelterRequestStatus,
+} from "@/lib/flow";
+
+type Tab = "open" | "responses" | "matched";
+
+type RequestRow = {
   id: string;
-  shelterName: string;
-  requestTitle: string;
-  pickupWindow: string;
-  location: string;
-  acceptedAt: string;
-  reminder: string;
+  title: string;
+  quantity: number | null;
+  food_needed: string | null;
+  pickup_window: string | null;
+  urgency: "low" | "medium" | "high";
+  notes: string | null;
+  city: string | null;
+  state: string | null;
+  status: ShelterRequestStatus;
+  created_at: string;
+  matched_donation_id: string | null;
+};
+
+type ResponseRow = {
+  id: string;
+  request_id: string;
+  restaurant_id: string;
+  donation_id: string | null;
+  proposed_pickup_window: string | null;
+  status: "pending" | "accepted" | "rejected" | "cancelled";
+  created_at: string;
+};
+
+type RequestSummary = {
+  id: string;
+  title: string;
+  status: ShelterRequestStatus;
 };
 
 export default function RestaurantHome() {
   const router = useRouter();
-  const [activeMenu, setActiveMenu] = useState("home");
-  const [notifications, setNotifications] = useState<AcceptedRequestNotification[]>([]);
+  const [activeTab, setActiveTab] = useState<Tab>("open");
+  const [loading, setLoading] = useState(true);
+  const [statusMsg, setStatusMsg] = useState<string | null>(null);
+  const [userId, setUserId] = useState<string | null>(null);
+  const [openRequests, setOpenRequests] = useState<RequestRow[]>([]);
+  const [responses, setResponses] = useState<ResponseRow[]>([]);
+  const [matchedRequests, setMatchedRequests] = useState<RequestRow[]>([]);
+  const [requestSummariesById, setRequestSummariesById] = useState<Record<string, RequestSummary>>({});
 
-  useEffect(() => {
-    if (typeof window === "undefined") return;
+  const loadDashboard = async () => {
+    setLoading(true);
+    setStatusMsg(null);
 
-    const raw = localStorage.getItem("acceptedShelterRequests");
-    if (!raw) return;
+    const supabase = getSupabaseClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
 
-    try {
-      const parsed = JSON.parse(raw) as AcceptedRequestNotification[];
-      setNotifications(parsed);
-    } catch {
-      setNotifications([]);
-    }
-  }, []);
-
-  // Sample shelter donation requests
-  const shelters = [
-    {
-      id: 1,
-      name: "Community Shelter Downtown",
-      location: "123 Main St, City, ST",
-      requestType: "Lunch for 50 people",
-      urgency: "High",
-      time: "Today 12:00 PM",
-      meals: "Sandwiches, Salads, Beverages",
-    },
-    {
-      id: 2,
-      name: "Hope Center",
-      location: "456 Oak Ave, City, ST",
-      requestType: "Dinner for 35 people",
-      urgency: "Medium",
-      time: "Tomorrow 5:00 PM",
-      meals: "Any hot meal",
-    },
-    {
-      id: 3,
-      name: "Family Services Hub",
-      location: "789 Pine Rd, City, ST",
-      requestType: "Breakfast for 20 people",
-      urgency: "Low",
-      time: "Next week",
-      meals: "Pastries, Breakfast items",
-    },
-  ];
-
-  const menuItems = [
-    { id: "home", label: "Home", icon: "🏠" },
-    { id: "notifications", label: "Notifications", icon: "🔔" },
-    { id: "profile", label: "My Profile", icon: "👤" },
-    { id: "settings", label: "Settings", icon: "⚙️" },
-    { id: "ai", label: "Ask AI", icon: "🤖" },
-    { id: "more", label: "More", icon: "•••" },
-  ];
-
-  const handleMenuClick = (menuId: string) => {
-    setActiveMenu(menuId);
-
-    if (menuId === "home") {
-      router.push("/restaurant/home");
+    if (!user) {
+      router.push("/restaurant/login");
       return;
     }
 
-    if (menuId === "notifications") {
+    const role = await getCurrentUserRole(user.id);
+    if (role && role !== "restaurant") {
+      router.push("/shelter/home");
       return;
     }
 
-    if (menuId === "profile") {
-      router.push("/restaurant/profile");
+    const complete = await isRestaurantProfileComplete(user.id);
+    if (!complete) {
+      router.push("/restaurant/register-donor/details");
       return;
     }
 
-    if (menuId === "settings") {
-      router.push("/restaurant/settings");
-    }
+    setUserId(user.id);
+
+    const [{ data: requestRows }, { data: myResponses }] = await Promise.all([
+      supabase
+        .from("shelter_requests")
+        .select("id, title, quantity, food_needed, pickup_window, urgency, notes, city, state, status, created_at, matched_donation_id")
+        .in("status", ["open", "responded", "matched", "fulfilled", "cancelled"])
+        .order("created_at", { ascending: false }),
+      supabase
+        .from("request_responses")
+        .select("id, request_id, restaurant_id, donation_id, proposed_pickup_window, status, created_at")
+        .eq("restaurant_id", user.id)
+        .order("created_at", { ascending: false }),
+    ]);
+
+    const parsedRequests = (requestRows || []) as RequestRow[];
+    const parsedResponses = (myResponses || []) as ResponseRow[];
+
+    const summaries: Record<string, RequestSummary> = {};
+    parsedRequests.forEach((row) => {
+      summaries[row.id] = { id: row.id, title: row.title, status: row.status };
+    });
+    setRequestSummariesById(summaries);
+
+    const responseRequestIds = new Set(parsedResponses.map((row) => row.request_id));
+
+    const openQueue = parsedRequests.filter((row) => {
+      if (row.status !== "open" && row.status !== "responded") return false;
+      const myResponse = parsedResponses.find((resp) => resp.request_id === row.id);
+      return !myResponse || myResponse.status === "rejected" || myResponse.status === "cancelled";
+    });
+
+    const matchedRequestIds = new Set(
+      parsedResponses
+        .filter((resp) => resp.status === "accepted")
+        .map((resp) => resp.request_id)
+    );
+
+    const matched = parsedRequests.filter((row) => matchedRequestIds.has(row.id));
+
+    setOpenRequests(openQueue);
+    setResponses(parsedResponses);
+    setMatchedRequests(matched);
+
+    setLoading(false);
   };
 
-  const handleDonationRequest = (shelterId: number) => {
-    router.push(`/restaurant/donation/${shelterId}`);
+  useEffect(() => {
+    void loadDashboard();
+  }, []);
+
+  const responseByRequest = useMemo(() => {
+    const map: Record<string, ResponseRow> = {};
+    responses.forEach((row) => {
+      if (!map[row.request_id]) {
+        map[row.request_id] = row;
+      }
+    });
+    return map;
+  }, [responses]);
+
+  const handleSignOut = async () => {
+    const supabase = getSupabaseClient();
+    await supabase.auth.signOut();
+    router.replace("/");
   };
 
   return (
-    <div className="flex min-h-screen bg-yellow-50 font-sans">
-      {/* Sidebar */}
-      <aside className="w-64 bg-white border-r-2 border-emerald-100 p-6 shadow-sm transition-all">
-        <div className="mb-8">
-          <h2 className="text-2xl font-bold text-emerald-900">Plate Share</h2>
-          <p className="text-sm text-emerald-600">Restaurant Portal</p>
+    <div className="min-h-screen bg-slate-50 p-6">
+      <div className="mx-auto max-w-7xl">
+        <div className="mb-4 flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-semibold text-slate-900">Restaurant Request Queue</h1>
+            <p className="text-sm text-slate-600">Browse open shelter requests and manage your response pipeline.</p>
+          </div>
+          <div className="flex gap-2">
+            <button className={`rounded border px-3 py-2 text-sm ${activeTab === "open" ? "bg-white" : "bg-transparent"}`} onClick={() => setActiveTab("open")}>Open Requests</button>
+            <button className={`rounded border px-3 py-2 text-sm ${activeTab === "responses" ? "bg-white" : "bg-transparent"}`} onClick={() => setActiveTab("responses")}>My Responses</button>
+            <button className={`rounded border px-3 py-2 text-sm ${activeTab === "matched" ? "bg-white" : "bg-transparent"}`} onClick={() => setActiveTab("matched")}>Matched</button>
+            <button className="rounded border px-3 py-2 text-sm" onClick={() => router.push("/restaurant/profile")}>Profile</button>
+            <button className="rounded border px-3 py-2 text-sm" onClick={() => router.push("/restaurant/settings")}>Settings</button>
+            <button className="rounded border px-3 py-2 text-sm" onClick={() => void handleSignOut()}>Sign out</button>
+          </div>
         </div>
 
-        <nav className="space-y-3">
-          {menuItems.map((item) => (
-            <button
-              key={item.id}
-              onClick={() => handleMenuClick(item.id)}
-              className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg font-medium transition ${
-                activeMenu === item.id
-                  ? "bg-emerald-100 text-emerald-900 border-l-4 border-emerald-600"
-                  : "text-emerald-700 hover:bg-emerald-50"
-              }`}
-            >
-              <span className="text-xl">{item.icon}</span>
-              <span>{item.label}</span>
-              {item.id === "notifications" && notifications.length > 0 && (
-                <span className="ml-auto rounded-full bg-emerald-600 px-2 py-0.5 text-xs font-bold text-white">
-                  {notifications.length}
-                </span>
-              )}
-            </button>
-          ))}
-        </nav>
+        {statusMsg ? <p className="mb-4 text-sm text-slate-700">{statusMsg}</p> : null}
 
-        <div className="mt-12 pt-6 border-t border-emerald-100">
-          <button
-            onClick={() => router.push("/")}
-            className="w-full px-4 py-3 rounded-lg text-emerald-700 hover:bg-emerald-50 font-medium transition"
-          >
-            Logout
-          </button>
-        </div>
-      </aside>
-
-      {/* Main Content */}
-      <main className="flex-1 p-8">
-        <div className="max-w-6xl mx-auto">
-          {activeMenu === "notifications" ? (
-            <>
-              <div className="mb-8">
-                <h1 className="text-4xl font-bold text-emerald-900 mb-2">Notifications</h1>
-                <p className="text-emerald-700">
-                  Updates and reminders for shelter requests your restaurant has accepted.
-                </p>
-              </div>
-
-              {notifications.length === 0 ? (
-                <div className="rounded-2xl border-2 border-emerald-100 bg-white p-8 shadow-md text-center">
-                  <p className="text-lg font-semibold text-emerald-900">No notifications yet</p>
-                  <p className="mt-2 text-emerald-700">
-                    Accept a shelter request to start seeing updates and reminders here.
-                  </p>
+        <section className="rounded border border-slate-200 bg-white p-0">
+          {loading ? (
+            <p className="px-4 py-6 text-sm text-slate-600">Loading requests...</p>
+          ) : activeTab === "open" ? (
+            openRequests.length === 0 ? (
+              <p className="px-4 py-6 text-sm text-slate-600">No open requests available right now.</p>
+            ) : (
+              <>
+                <div className="grid grid-cols-12 gap-2 border-b border-slate-200 px-4 py-3 text-xs uppercase text-slate-500">
+                  <p className="col-span-3">Request</p>
+                  <p className="col-span-2">Servings</p>
+                  <p className="col-span-2">Food Type</p>
+                  <p className="col-span-2">Pickup</p>
+                  <p className="col-span-1">Urgency</p>
+                  <p className="col-span-2 text-right">Action</p>
                 </div>
-              ) : (
-                <div className="space-y-4">
-                  {notifications.map((item) => (
-                    <div
-                      key={item.id}
-                      className="rounded-2xl border-2 border-emerald-100 bg-white p-6 shadow-md"
-                    >
-                      <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-                        <h3 className="text-xl font-bold text-emerald-900">{item.shelterName}</h3>
-                        <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-bold text-emerald-700">
-                          Accepted
-                        </span>
-                      </div>
-
-                      <p className="mt-2 text-emerald-900 font-semibold">{item.requestTitle}</p>
-                      <p className="mt-2 text-sm text-emerald-700">Location: {item.location}</p>
-                      <p className="text-sm text-emerald-700">Pickup Window: {item.pickupWindow}</p>
-
-                      <div className="mt-3 rounded-lg border border-emerald-200 bg-yellow-50 p-3">
-                        <p className="text-sm font-medium text-emerald-900">Reminder: {item.reminder}</p>
-                      </div>
-
-                      <p className="mt-3 text-xs text-emerald-600">Accepted at: {item.acceptedAt}</p>
+                {openRequests.map((row) => (
+                  <div key={row.id} className="grid grid-cols-12 gap-2 border-t border-slate-200 px-4 py-3 text-sm">
+                    <div className="col-span-3">
+                      <p className="font-medium text-slate-900">{row.title}</p>
+                      <p className="text-xs text-slate-500">{row.city || "City"}, {row.state || "ST"}</p>
                     </div>
-                  ))}
-                </div>
-              )}
-            </>
-          ) : (
-            <>
-              {/* Header */}
-              <div className="mb-8">
-                <h1 className="text-4xl font-bold text-emerald-900 mb-2">
-                  Welcome Back
-                </h1>
-                <p className="text-emerald-700">
-                  Browse donation requests from shelters in your area
-                </p>
-              </div>
-
-              {/* Shelter Requests Grid */}
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {shelters.map((shelter) => (
-                  <div
-                    key={shelter.id}
-                    className="bg-white rounded-xl border-2 border-emerald-100 shadow-md overflow-hidden hover:shadow-lg transition"
-                  >
-                    {/* Card Header */}
-                    <div className="bg-emerald-50 p-4 border-b-2 border-emerald-100">
-                      <h3 className="text-lg font-bold text-emerald-900">
-                        {shelter.name}
-                      </h3>
-                      <p className="text-sm text-emerald-600 mt-1">{shelter.location}</p>
-                    </div>
-
-                    {/* Card Body */}
-                    <div className="p-4 space-y-3">
-                      <div>
-                        <p className="text-xs font-semibold text-emerald-700 uppercase tracking-wide">
-                          Request
-                        </p>
-                        <p className="text-md font-semibold text-emerald-900">
-                          {shelter.requestType}
-                        </p>
-                      </div>
-
-                      <div>
-                        <p className="text-xs font-semibold text-emerald-700 uppercase tracking-wide">
-                          Meal Types Needed
-                        </p>
-                        <p className="text-sm text-emerald-800">{shelter.meals}</p>
-                      </div>
-
-                      <div className="flex gap-2">
-                        <div className="flex-1">
-                          <p className="text-xs font-semibold text-emerald-700 uppercase tracking-wide">
-                            Time
-                          </p>
-                          <p className="text-sm text-emerald-800">{shelter.time}</p>
-                        </div>
-                        <div>
-                          <p className="text-xs font-semibold text-emerald-700 uppercase tracking-wide">
-                            Urgency
-                          </p>
-                          <span
-                            className={`inline-block px-3 py-1 rounded-full text-xs font-bold ${
-                              shelter.urgency === "High"
-                                ? "bg-red-100 text-red-700"
-                                : shelter.urgency === "Medium"
-                                ? "bg-yellow-100 text-yellow-700"
-                                : "bg-green-100 text-green-700"
-                            }`}
-                          >
-                            {shelter.urgency}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Card Footer */}
-                    <div className="p-4 border-t border-emerald-100 bg-yellow-50">
-                      <button
-                        onClick={() => handleDonationRequest(shelter.id)}
-                        className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-2 rounded-lg transition"
-                      >
-                        Respond to Request
+                    <p className="col-span-2 text-slate-700">{row.quantity || "-"}</p>
+                    <p className="col-span-2 text-slate-700">{row.food_needed || "Not specified"}</p>
+                    <p className="col-span-2 text-slate-700">{row.pickup_window || "Not set"}</p>
+                    <p className="col-span-1 capitalize text-slate-700">{row.urgency}</p>
+                    <div className="col-span-2 text-right">
+                      <button className="rounded border px-3 py-1 text-xs" onClick={() => router.push(`/restaurant/donation/${row.id}`)}>
+                        View
                       </button>
                     </div>
                   </div>
                 ))}
+              </>
+            )
+          ) : activeTab === "responses" ? (
+            responses.length === 0 ? (
+              <p className="px-4 py-6 text-sm text-slate-600">You have not responded to any requests yet.</p>
+            ) : (
+              responses.map((row) => (
+                <div key={row.id} className="border-t border-slate-200 px-4 py-3 text-sm first:border-t-0">
+                  {(() => {
+                    const requestSummary = requestSummariesById[row.request_id];
+                    const requestAvailable = Boolean(requestSummary);
+
+                    return (
+                      <>
+                  <div className="flex items-center justify-between">
+                    <p className="font-medium text-slate-900">{requestSummary?.title || `Request ${row.request_id.slice(0, 8)}`}</p>
+                    <p className="capitalize text-slate-700">{row.status}</p>
+                  </div>
+                  {requestSummary ? <p className="text-xs text-slate-500">Current request status: {mapShelterStatusForUi(requestSummary.status)}</p> : null}
+                  <p className="text-slate-600">Proposed pickup: {row.proposed_pickup_window || "Not provided"}</p>
+                  {requestAvailable ? (
+                    <button className="mt-2 rounded border px-3 py-1 text-xs" onClick={() => router.push(`/restaurant/donation/${row.request_id}`)}>
+                      Open Request
+                    </button>
+                  ) : (
+                    <p className="mt-2 text-xs text-slate-500">This request is no longer accessible.</p>
+                  )}
+                      </>
+                    );
+                  })()}
+                </div>
+              ))
+            )
+          ) : matchedRequests.length === 0 ? (
+            <p className="px-4 py-6 text-sm text-slate-600">No matched requests yet.</p>
+          ) : (
+            matchedRequests.map((row) => (
+              <div key={row.id} className="border-t border-slate-200 px-4 py-3 text-sm first:border-t-0">
+                <div className="flex items-center justify-between">
+                  <p className="font-medium text-slate-900">{row.title}</p>
+                  <p className="text-slate-700">{mapShelterStatusForUi(row.status)}</p>
+                </div>
+                <p className="text-slate-600">Pickup window: {row.pickup_window || "Not set"}</p>
+                <button className="mt-2 rounded border px-3 py-1 text-xs" onClick={() => router.push(`/restaurant/donation/${row.id}`)}>
+                  View Coordination Details
+                </button>
               </div>
-            </>
+            ))
           )}
-        </div>
-      </main>
+        </section>
+      </div>
     </div>
   );
 }

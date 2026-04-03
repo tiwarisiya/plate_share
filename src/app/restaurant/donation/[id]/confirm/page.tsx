@@ -2,191 +2,191 @@
 
 import React, { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
+import { getSupabaseClient } from "@/lib/supabaseClient";
+import { getCurrentUserRole, isRestaurantProfileComplete } from "@/lib/flow";
 
-type RestaurantProfile = {
-  restaurantName: string;
-  email: string;
-  address: string;
-  city: string;
-  state: string;
-  zipCode: string;
-  foodTypes: string;
-  pickupWindow: string;
-};
-
-type AcceptedRequestNotification = {
+type RequestRow = {
   id: string;
-  shelterName: string;
-  requestTitle: string;
-  pickupWindow: string;
-  location: string;
-  acceptedAt: string;
-  reminder: string;
-};
-
-const requestDetails: Record<string, Omit<AcceptedRequestNotification, "acceptedAt" | "reminder">> = {
-  "1": {
-    id: "1",
-    shelterName: "Community Shelter Downtown",
-    requestTitle: "Lunch for 50 people",
-    pickupWindow: "Today, 12:00 PM - 1:00 PM",
-    location: "123 Main St, City, ST 10001",
-  },
-  "2": {
-    id: "2",
-    shelterName: "Hope Center",
-    requestTitle: "Dinner for 35 people",
-    pickupWindow: "Tomorrow, 5:00 PM - 6:00 PM",
-    location: "456 Oak Ave, City, ST 10002",
-  },
-  "3": {
-    id: "3",
-    shelterName: "Family Services Hub",
-    requestTitle: "Breakfast for 20 people",
-    pickupWindow: "Next week, 7:30 AM - 8:30 AM",
-    location: "789 Pine Rd, City, ST 10003",
-  },
-};
-
-const defaultProfile: RestaurantProfile = {
-  restaurantName: "Your Restaurant",
-  email: "restaurant@example.com",
-  address: "123 Main St",
-  city: "City",
-  state: "ST",
-  zipCode: "12345",
-  foodTypes: "Food types not provided",
-  pickupWindow: "Pickup window not provided",
+  title: string;
+  pickup_window: string | null;
+  status: "open" | "responded" | "matched" | "fulfilled" | "cancelled";
 };
 
 export default function DonationConfirmPage() {
   const params = useParams();
   const router = useRouter();
-  const [profile, setProfile] = useState<RestaurantProfile>(defaultProfile);
-  const [confirmed, setConfirmed] = useState(false);
+  const requestId = String(params.id || "");
 
-  const handleConfirm = () => {
-    if (typeof window !== "undefined") {
-      const id = String(params.id || "");
-      const fallback = {
-        id,
-        shelterName: "Shelter Request",
-        requestTitle: "Accepted donation request",
-        pickupWindow: profile.pickupWindow,
-        location: `${profile.address}, ${profile.city}, ${profile.state} ${profile.zipCode}`,
-      };
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [statusMsg, setStatusMsg] = useState<string | null>(null);
+  const [request, setRequest] = useState<RequestRow | null>(null);
+  const [pickupWindow, setPickupWindow] = useState("");
+  const [responseNote, setResponseNote] = useState("");
 
-      const request = requestDetails[id] || fallback;
-      const notification: AcceptedRequestNotification = {
-        ...request,
-        acceptedAt: new Date().toLocaleString(),
-        reminder: `Prepare your donation before ${request.pickupWindow}.`,
-      };
+  const loadData = async () => {
+    setLoading(true);
+    setStatusMsg(null);
 
-      const existingRaw = localStorage.getItem("acceptedShelterRequests");
-      let existing: AcceptedRequestNotification[] = [];
+    const supabase = getSupabaseClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
 
-      if (existingRaw) {
-        try {
-          existing = JSON.parse(existingRaw) as AcceptedRequestNotification[];
-        } catch {
-          existing = [];
-        }
-      }
-
-      const filtered = existing.filter((item) => item.id !== notification.id);
-      const updated = [notification, ...filtered];
-      localStorage.setItem("acceptedShelterRequests", JSON.stringify(updated));
+    if (!user) {
+      router.push("/restaurant/login");
+      return;
     }
 
-    setConfirmed(true);
+    const role = await getCurrentUserRole(user.id);
+    if (role && role !== "restaurant") {
+      router.push("/shelter/home");
+      return;
+    }
+
+    const complete = await isRestaurantProfileComplete(user.id);
+    if (!complete) {
+      router.push("/restaurant/register-donor/details");
+      return;
+    }
+
+    const [{ data: requestRow }, { data: existingResponse }] = await Promise.all([
+      supabase
+        .from("shelter_requests")
+        .select("id, title, pickup_window, status")
+        .eq("id", requestId)
+        .single(),
+      supabase
+        .from("request_responses")
+        .select("proposed_pickup_window, response_note")
+        .eq("request_id", requestId)
+        .eq("restaurant_id", user.id)
+        .single(),
+    ]);
+
+    if (!requestRow) {
+      setStatusMsg("Request not found.");
+      setLoading(false);
+      return;
+    }
+
+    const parsed = requestRow as RequestRow;
+    setRequest(parsed);
+
+    setPickupWindow(existingResponse?.proposed_pickup_window || parsed.pickup_window || "");
+    setResponseNote(existingResponse?.response_note || "");
+
+    setLoading(false);
   };
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
+    if (!requestId) return;
+    void loadData();
+  }, [requestId]);
 
-    const rawProfile = localStorage.getItem("restaurantProfile");
-    if (!rawProfile) return;
+  const handleSubmitResponse = async () => {
+    if (!request) return;
+    if (request.status === "matched" || request.status === "fulfilled" || request.status === "cancelled") {
+      setStatusMsg("Cannot respond to this request because it is no longer open.");
+      return;
+    }
+
+    setSubmitting(true);
+    setStatusMsg(null);
 
     try {
-      const parsed = JSON.parse(rawProfile) as Partial<RestaurantProfile>;
-      setProfile({ ...defaultProfile, ...parsed });
-    } catch {
-      setProfile(defaultProfile);
+      const supabase = getSupabaseClient();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (!user) {
+        throw new Error("Please sign in again.");
+      }
+
+      const { data: donation } = await supabase
+        .from("donations")
+        .select("id")
+        .eq("restaurant_id", user.id)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .single();
+
+      if (!donation) {
+        throw new Error("No donation profile found. Complete onboarding first.");
+      }
+
+      const { error: responseError } = await supabase
+        .from("request_responses")
+        .upsert(
+          {
+            request_id: request.id,
+            restaurant_id: user.id,
+            donation_id: donation.id,
+            proposed_pickup_window: pickupWindow || null,
+            response_note: responseNote || null,
+            status: "pending",
+          },
+          { onConflict: "request_id,restaurant_id" }
+        );
+
+      if (responseError) {
+        throw new Error(responseError.message);
+      }
+
+      await supabase
+        .from("shelter_requests")
+        .update({ status: "responded" })
+        .eq("id", request.id)
+        .eq("status", "open");
+
+      setStatusMsg("Response submitted. Waiting for shelter acceptance.");
+      router.push(`/restaurant/donation/${request.id}`);
+    } catch (err: unknown) {
+      setStatusMsg(err instanceof Error ? err.message : "Failed to submit response.");
+    } finally {
+      setSubmitting(false);
     }
-  }, []);
+  };
 
   return (
-    <div className="min-h-screen bg-yellow-50 font-sans">
-      <main className="mx-auto max-w-4xl px-6 py-10">
-        <div className="mb-6 flex items-center justify-between">
-          <button
-            onClick={() => router.push(`/restaurant/donation/${String(params.id || "")}`)}
-            className="rounded-full border-2 border-emerald-500 bg-white px-5 py-2 text-sm font-semibold text-emerald-700 hover:bg-emerald-50 transition"
-          >
-            Back to Request
-          </button>
-
-          <span className="rounded-full bg-emerald-100 px-4 py-1 text-xs font-bold text-emerald-700">
-            Final Review
-          </span>
-        </div>
-
-        <section className="rounded-2xl border-2 border-emerald-100 bg-white p-8 shadow-lg">
-          <h1 className="text-3xl font-bold text-emerald-900">Restaurant Contact Profile</h1>
-          <p className="mt-2 text-emerald-700">
-            Review your restaurant profile and contact information before confirming this request.
-          </p>
-
-          <div className="mt-8 grid grid-cols-1 gap-4 md:grid-cols-2">
-            <div className="rounded-xl border border-emerald-200 bg-yellow-50 p-4 md:col-span-2">
-              <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Restaurant Name</p>
-              <p className="mt-1 text-xl font-bold text-emerald-900">{profile.restaurantName}</p>
+    <div className="min-h-screen bg-slate-50 p-6">
+      <main className="mx-auto max-w-3xl rounded border border-slate-200 bg-white p-6">
+        {loading ? (
+          <p className="text-sm text-slate-600">Loading...</p>
+        ) : !request ? (
+          <p className="text-sm text-slate-600">Request unavailable.</p>
+        ) : (
+          <>
+            <div className="mb-4 flex items-center justify-between">
+              <button className="rounded border px-3 py-2 text-sm" onClick={() => router.push(`/restaurant/donation/${request.id}`)}>Back</button>
+              <p className="text-sm text-slate-600">Status: {request.status}</p>
             </div>
 
-            <div className="rounded-xl border border-emerald-200 bg-yellow-50 p-4">
-              <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Email</p>
-              <p className="mt-1 text-emerald-900 font-semibold break-words">{profile.email}</p>
+            <h1 className="text-xl font-semibold text-slate-900">Respond to Request</h1>
+            <p className="mt-1 text-sm text-slate-600">Submit your coordination details. Shelter will accept or reject your response.</p>
+
+            <div className="mt-5 space-y-3">
+              <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">Proposed pickup window</label>
+                <input className="h-10 w-full rounded border border-slate-300 px-3 text-sm" value={pickupWindow} onChange={(e) => setPickupWindow(e.target.value)} placeholder="Today 16:00 - 18:00" />
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">Response note (optional)</label>
+                <textarea className="w-full rounded border border-slate-300 px-3 py-2 text-sm" rows={4} value={responseNote} onChange={(e) => setResponseNote(e.target.value)} placeholder="Packaging, loading, or scheduling notes" />
+              </div>
             </div>
 
-            <div className="rounded-xl border border-emerald-200 bg-yellow-50 p-4">
-              <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Phone</p>
-              <p className="mt-1 text-emerald-900 font-semibold">(555) 000-0000</p>
-            </div>
+            {statusMsg ? <p className="mt-4 text-sm text-slate-700">{statusMsg}</p> : null}
 
-            <div className="rounded-xl border border-emerald-200 bg-yellow-50 p-4 md:col-span-2">
-              <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Address</p>
-              <p className="mt-1 text-emerald-900 font-semibold">
-                {profile.address}, {profile.city}, {profile.state} {profile.zipCode}
-              </p>
+            <div className="mt-5 flex gap-2">
+              <button className="rounded bg-emerald-800 px-4 py-2 text-sm text-white disabled:opacity-50" disabled={submitting} onClick={() => void handleSubmitResponse()}>
+                {submitting ? "Submitting..." : "Submit Response"}
+              </button>
+              <button className="rounded border px-4 py-2 text-sm" onClick={() => router.push(`/restaurant/donation/${request.id}`)}>Cancel</button>
             </div>
-
-            <div className="rounded-xl border border-emerald-200 bg-yellow-50 p-4">
-              <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Food Types</p>
-              <p className="mt-1 text-emerald-900">{profile.foodTypes}</p>
-            </div>
-
-            <div className="rounded-xl border border-emerald-200 bg-yellow-50 p-4">
-              <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Pickup Window</p>
-              <p className="mt-1 text-emerald-900">{profile.pickupWindow}</p>
-            </div>
-          </div>
-
-          {confirmed && (
-            <div className="mt-6 rounded-lg border border-emerald-300 bg-emerald-50 p-3 text-sm font-semibold text-emerald-800">
-              Request confirmed. The shelter can now contact your restaurant using this profile.
-            </div>
-          )}
-
-          <div className="mt-8">
-            <button
-              onClick={handleConfirm}
-              className="w-full rounded-full bg-emerald-600 px-6 py-3 text-white text-lg font-semibold shadow-md hover:bg-emerald-700 transition"
-            >
-              Confirm
-            </button>
-          </div>
-        </section>
+          </>
+        )}
       </main>
     </div>
   );

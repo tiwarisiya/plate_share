@@ -2,377 +2,588 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { getSupabaseClient } from "@/lib/supabaseClient";
+import {
+  canEditCoreRequestFields,
+  canEditPickupWindow,
+  getCurrentUserRole,
+  isShelterProfileComplete,
+  mapShelterStatusForUi,
+  ShelterRequestStatus,
+} from "@/lib/flow";
 
-type TabKey = "requests" | "notifications" | "settings" | "ai";
+type Tab = "requests" | "notifications" | "settings";
 
-type ShelterRequest = {
+type RequestRow = {
   id: string;
+  title: string;
+  quantity: number | null;
+  food_needed: string | null;
+  food_restrictions: string | null;
+  pickup_window: string | null;
+  urgency: "low" | "medium" | "high";
+  notes: string | null;
+  coordination_notes: string | null;
+  status: ShelterRequestStatus;
+  created_at: string;
+  matched_donation_id: string | null;
+  shelter_contact_email: string | null;
+  shelter_contact_phone: string | null;
+  address: string | null;
+  city: string | null;
+  state: string | null;
+  zip_code: string | null;
+};
+
+type ResponseRow = {
+  id: string;
+  request_id: string;
+  restaurant_id: string;
+  donation_id: string | null;
+  proposed_pickup_window: string | null;
+  response_note: string | null;
+  status: "pending" | "accepted" | "rejected" | "cancelled";
+  created_at: string;
+};
+
+type ProfileRow = {
+  id: string;
+  name: string | null;
+  email: string | null;
+  phone: string | null;
+  address: string | null;
+  city: string | null;
+  state: string | null;
+  zip_code: string | null;
+  organization_notes: string | null;
+};
+
+type NewRequestState = {
   title: string;
   quantity: string;
+  foodNeeded: string;
   restrictions: string;
   pickupWindow: string;
-  status: "Pending" | "Accepted" | "In Progress" | "Completed";
-  createdAt: string;
-  notes?: string;
+  urgency: "low" | "medium" | "high";
+  notes: string;
 };
 
-type ShelterProfile = {
-  shelterName: string;
-  contactName: string;
-  phone: string;
-  email: string;
-  address: string;
-  city: string;
-  state: string;
-  zipCode: string;
-};
-
-type ShelterNotification = {
-  id: string;
+type EditState = {
+  requestId: string;
   title: string;
-  message: string;
-  createdAt: string;
+  quantity: string;
+  foodNeeded: string;
+  restrictions: string;
+  pickupWindow: string;
+  urgency: "low" | "medium" | "high";
+  notes: string;
+  coordinationNotes: string;
 };
 
-const emptyProfile: ShelterProfile = {
-  shelterName: "Your Shelter",
-  contactName: "Shelter Contact",
-  phone: "(555) 000-0000",
-  email: "shelter@example.org",
-  address: "123 Main St",
-  city: "City",
-  state: "ST",
-  zipCode: "12345",
+const initialRequestState: NewRequestState = {
+  title: "",
+  quantity: "",
+  foodNeeded: "",
+  restrictions: "",
+  pickupWindow: "",
+  urgency: "medium",
+  notes: "",
 };
 
 export default function ShelterHomePage() {
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState<TabKey>("requests");
-  const [requests, setRequests] = useState<ShelterRequest[]>([]);
-  const [profile, setProfile] = useState<ShelterProfile>(emptyProfile);
-  const [notifications, setNotifications] = useState<ShelterNotification[]>([]);
-  const [newRequest, setNewRequest] = useState({
-    title: "",
-    quantity: "",
-    restrictions: "",
-    pickupWindow: "",
-    notes: "",
-  });
+  const [activeTab, setActiveTab] = useState<Tab>("requests");
+  const [loading, setLoading] = useState(true);
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
+  const [userId, setUserId] = useState<string | null>(null);
+  const [profile, setProfile] = useState<ProfileRow | null>(null);
+  const [requests, setRequests] = useState<RequestRow[]>([]);
+  const [responsesByRequest, setResponsesByRequest] = useState<Record<string, ResponseRow[]>>({});
+  const [restaurantNames, setRestaurantNames] = useState<Record<string, string>>({});
+  const [newRequest, setNewRequest] = useState<NewRequestState>(initialRequestState);
+  const [editState, setEditState] = useState<EditState | null>(null);
 
-  useEffect(() => {
-    if (typeof window === "undefined") return;
+  const loadDashboard = async () => {
+    setLoading(true);
+    setStatusMsg(null);
 
-    const rawProfile = localStorage.getItem("shelterProfile");
-    if (rawProfile) {
-      try {
-        const parsedProfile = JSON.parse(rawProfile) as Partial<ShelterProfile>;
-        setProfile({ ...emptyProfile, ...parsedProfile });
-      } catch {
-        setProfile(emptyProfile);
-      }
-    }
+    const supabase = getSupabaseClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
 
-    const rawRequests = localStorage.getItem("shelterRequests");
-    if (rawRequests) {
-      try {
-        const parsedRequests = JSON.parse(rawRequests) as ShelterRequest[];
-        setRequests(parsedRequests);
-      } catch {
-        setRequests([]);
-      }
-    }
-
-    const rawNotifications = localStorage.getItem("shelterNotifications");
-    if (rawNotifications) {
-      try {
-        const parsed = JSON.parse(rawNotifications) as ShelterNotification[];
-        setNotifications(parsed);
-      } catch {
-        setNotifications([]);
-      }
-    }
-  }, []);
-
-  const tabItems = useMemo(
-    () => [
-      { id: "requests" as const, label: "Requests", icon: "📋" },
-      { id: "notifications" as const, label: "Notifications", icon: "🔔" },
-      { id: "settings" as const, label: "Settings", icon: "⚙️" },
-      { id: "ai" as const, label: "Ask AI", icon: "🤖" },
-    ],
-    []
-  );
-
-  const saveRequests = (next: ShelterRequest[]) => {
-    setRequests(next);
-    if (typeof window !== "undefined") {
-      localStorage.setItem("shelterRequests", JSON.stringify(next));
-    }
-  };
-
-  const saveNotifications = (next: ShelterNotification[]) => {
-    setNotifications(next);
-    if (typeof window !== "undefined") {
-      localStorage.setItem("shelterNotifications", JSON.stringify(next));
-    }
-  };
-
-  const handleCreateRequest = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newRequest.title || !newRequest.quantity || !newRequest.pickupWindow) {
-      setStatusMsg("Please fill in request name, quantity, and pickup window.");
+    if (!user) {
+      router.push("/shelter/login");
       return;
     }
 
-    const created: ShelterRequest = {
-      id: String(Date.now()),
-      title: newRequest.title,
-      quantity: newRequest.quantity,
-      restrictions: newRequest.restrictions || "None listed",
-      pickupWindow: newRequest.pickupWindow,
-      status: "Pending",
-      createdAt: new Date().toLocaleString(),
-      notes: newRequest.notes,
-    };
+    const role = await getCurrentUserRole(user.id);
+    if (role && role !== "shelter") {
+      await supabase.auth.signOut();
+      router.replace("/shelter/login");
+      return;
+    }
 
-    const updatedRequests = [created, ...requests];
-    saveRequests(updatedRequests);
+    const complete = await isShelterProfileComplete(user.id);
+    if (!complete) {
+      router.push("/shelter/register/details");
+      return;
+    }
 
-    const notification: ShelterNotification = {
-      id: created.id,
-      title: "New request created",
-      message: `${created.title} has been posted and is waiting for restaurant responses.`,
-      createdAt: created.createdAt,
-    };
-    saveNotifications([notification, ...notifications]);
+    setUserId(user.id);
 
-    setNewRequest({ title: "", quantity: "", restrictions: "", pickupWindow: "", notes: "" });
-    setStatusMsg("Request created successfully.");
+    const { data: profileRow } = await supabase
+      .from("profiles")
+      .select("id, name, email, phone, address, city, state, zip_code, organization_notes")
+      .eq("id", user.id)
+      .single();
+
+    if (profileRow) {
+      setProfile(profileRow as ProfileRow);
+    }
+
+    const { data: requestRows } = await supabase
+      .from("shelter_requests")
+      .select(
+        "id, title, quantity, food_needed, food_restrictions, pickup_window, urgency, notes, coordination_notes, status, created_at, matched_donation_id, address, city, state, zip_code"
+      )
+      .eq("shelter_id", user.id)
+      .order("created_at", { ascending: false });
+
+    const parsedRequests = (requestRows || []) as RequestRow[];
+    setRequests(parsedRequests);
+
+    const requestIds = parsedRequests.map((row) => row.id);
+    if (requestIds.length === 0) {
+      setResponsesByRequest({});
+      setRestaurantNames({});
+      setLoading(false);
+      return;
+    }
+
+    const { data: responseRows } = await supabase
+      .from("request_responses")
+      .select("id, request_id, restaurant_id, donation_id, proposed_pickup_window, response_note, status, created_at")
+      .in("request_id", requestIds)
+      .order("created_at", { ascending: false });
+
+    const parsedResponses = (responseRows || []) as ResponseRow[];
+    const grouped: Record<string, ResponseRow[]> = {};
+    parsedResponses.forEach((row) => {
+      if (!grouped[row.request_id]) {
+        grouped[row.request_id] = [];
+      }
+      grouped[row.request_id].push(row);
+    });
+    setResponsesByRequest(grouped);
+
+    const restaurantIds = Array.from(new Set(parsedResponses.map((row) => row.restaurant_id)));
+    if (restaurantIds.length > 0) {
+      const { data: restaurantProfiles } = await supabase
+        .from("profiles")
+        .select("id, name")
+        .in("id", restaurantIds);
+
+      const names: Record<string, string> = {};
+      (restaurantProfiles || []).forEach((row: any) => {
+        names[row.id] = row.name || "Restaurant";
+      });
+      setRestaurantNames(names);
+    } else {
+      setRestaurantNames({});
+    }
+
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    void loadDashboard();
+  }, []);
+
+  const handleCreateRequest = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setStatusMsg(null);
+
+    if (!userId || !profile) {
+      setStatusMsg("Missing shelter profile data.");
+      return;
+    }
+
+    if (!newRequest.title || !newRequest.quantity || !newRequest.pickupWindow) {
+      setStatusMsg("Request title, quantity, and pickup window are required.");
+      return;
+    }
+
+    const quantity = Number.parseInt(newRequest.quantity, 10);
+    const parsedQuantity = Number.isNaN(quantity) ? null : quantity;
+
+    const supabase = getSupabaseClient();
+    const insertWithSnapshot = await supabase.from("shelter_requests").insert([
+      {
+        shelter_id: userId,
+        title: newRequest.title,
+        quantity: parsedQuantity,
+        food_needed: newRequest.foodNeeded || newRequest.title,
+        food_restrictions: newRequest.restrictions || null,
+        pickup_window: newRequest.pickupWindow,
+        urgency: newRequest.urgency,
+        notes: newRequest.notes || null,
+        shelter_contact_email: profile.email,
+        shelter_contact_phone: profile.phone,
+        address: profile.address,
+        city: profile.city,
+        state: profile.state,
+        zip_code: profile.zip_code,
+        status: "open",
+      },
+    ]);
+
+    let error = insertWithSnapshot.error;
+    if (error && error.code === "42703") {
+      const legacyInsert = await supabase.from("shelter_requests").insert([
+        {
+          shelter_id: userId,
+          title: newRequest.title,
+          quantity: parsedQuantity,
+          food_needed: newRequest.foodNeeded || newRequest.title,
+          food_restrictions: newRequest.restrictions || null,
+          pickup_window: newRequest.pickupWindow,
+          urgency: newRequest.urgency,
+          notes: newRequest.notes || null,
+          address: profile.address,
+          city: profile.city,
+          state: profile.state,
+          zip_code: profile.zip_code,
+          status: "open",
+        },
+      ]);
+      error = legacyInsert.error;
+    }
+
+    if (error) {
+      setStatusMsg(`Failed to create request: ${error.message}`);
+      return;
+    }
+
+    setNewRequest(initialRequestState);
+    setStatusMsg("Request created.");
+    await loadDashboard();
+  };
+
+  const startEdit = (row: RequestRow) => {
+    setEditState({
+      requestId: row.id,
+      title: row.title,
+      quantity: row.quantity ? String(row.quantity) : "",
+      foodNeeded: row.food_needed || "",
+      restrictions: row.food_restrictions || "",
+      pickupWindow: row.pickup_window || "",
+      urgency: row.urgency || "medium",
+      notes: row.notes || "",
+      coordinationNotes: row.coordination_notes || "",
+    });
+  };
+
+  const saveEdit = async () => {
+    if (!editState) return;
+
+    const row = requests.find((item) => item.id === editState.requestId);
+    if (!row) return;
+
+    const supabase = getSupabaseClient();
+
+    if (canEditCoreRequestFields(row.status)) {
+      const quantity = Number.parseInt(editState.quantity, 10);
+      const parsedQuantity = Number.isNaN(quantity) ? null : quantity;
+
+      const { error } = await supabase
+        .from("shelter_requests")
+        .update({
+          title: editState.title,
+          quantity: parsedQuantity,
+          food_needed: editState.foodNeeded || editState.title,
+          food_restrictions: editState.restrictions || null,
+          pickup_window: editState.pickupWindow,
+          urgency: editState.urgency,
+          notes: editState.notes || null,
+        })
+        .eq("id", row.id)
+        .eq("status", "open");
+
+      if (error) {
+        setStatusMsg(`Failed to update request: ${error.message}`);
+        return;
+      }
+    } else if (canEditPickupWindow(row.status)) {
+      const { error } = await supabase
+        .from("shelter_requests")
+        .update({
+          pickup_window: editState.pickupWindow,
+          coordination_notes: editState.coordinationNotes || null,
+        })
+        .eq("id", row.id)
+        .in("status", ["responded", "matched"]);
+
+      if (error) {
+        setStatusMsg(`Failed to update coordination details: ${error.message}`);
+        return;
+      }
+    }
+
+    setEditState(null);
+    setStatusMsg("Request updated.");
+    await loadDashboard();
+  };
+
+  const updateRequestStatus = async (requestId: string, nextStatus: "fulfilled" | "cancelled") => {
+    const supabase = getSupabaseClient();
+    const { error } = await supabase.from("shelter_requests").update({ status: nextStatus }).eq("id", requestId);
+    if (error) {
+      setStatusMsg(`Failed to update status: ${error.message}`);
+      return;
+    }
+    setStatusMsg(`Request marked ${nextStatus}.`);
+    await loadDashboard();
+  };
+
+  const acceptResponse = async (request: RequestRow, response: ResponseRow) => {
+    if (!userId) return;
+
+    const supabase = getSupabaseClient();
+
+    const { error: requestError } = await supabase
+      .from("shelter_requests")
+      .update({
+        status: "matched",
+        matched_donation_id: response.donation_id,
+        pickup_window: response.proposed_pickup_window || request.pickup_window,
+      })
+      .eq("id", request.id)
+      .in("status", ["open", "responded"]);
+
+    if (requestError) {
+      setStatusMsg(`Failed to match request: ${requestError.message}`);
+      return;
+    }
+
+    const { error: acceptError } = await supabase
+      .from("request_responses")
+      .update({ status: "accepted" })
+      .eq("id", response.id)
+      .eq("request_id", request.id);
+
+    if (acceptError) {
+      setStatusMsg(`Failed to accept response: ${acceptError.message}`);
+      return;
+    }
+
+    await supabase
+      .from("request_responses")
+      .update({ status: "rejected" })
+      .eq("request_id", request.id)
+      .eq("status", "pending")
+      .neq("id", response.id);
+
+    if (response.donation_id) {
+      await supabase
+        .from("donations")
+        .update({ status: "matched", matched_shelter_id: userId })
+        .eq("id", response.donation_id);
+    }
+
+    setStatusMsg("Response accepted and request matched.");
+    await loadDashboard();
+  };
+
+  const notifications = useMemo(() => {
+    return requests
+      .filter((row) => row.status === "responded" || row.status === "matched")
+      .map((row) => ({
+        id: row.id,
+        title: row.status === "matched" ? "Request matched" : "New restaurant responses",
+        message:
+          row.status === "matched"
+            ? `${row.title} is matched and ready for coordination.`
+            : `${row.title} has pending responses to review.`,
+        createdAt: new Date(row.created_at).toLocaleString(),
+      }));
+  }, [requests]);
+
+  const handleSignOut = async () => {
+    const supabase = getSupabaseClient();
+    await supabase.auth.signOut();
+    router.replace("/");
   };
 
   return (
-    <div className="flex min-h-screen bg-yellow-50 font-sans">
-      <aside className="w-64 shrink-0 border-r-2 border-emerald-100 bg-white p-6 shadow-sm">
-        <div className="mb-8">
-          <h2 className="text-2xl font-bold text-emerald-900">Plate Share</h2>
-          <p className="text-sm text-emerald-600">Shelter Portal</p>
+    <div className="min-h-screen bg-slate-50 p-6">
+      <div className="mx-auto max-w-7xl">
+        <div className="mb-4 flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-semibold text-slate-900">Shelter Request Management</h1>
+            <p className="text-sm text-slate-600">Create requests, review restaurant responses, and manage fulfillment states.</p>
+          </div>
+          <div className="flex gap-2">
+            <button className={`rounded border px-3 py-2 text-sm ${activeTab === "requests" ? "bg-white" : "bg-transparent"}`} onClick={() => setActiveTab("requests")}>Requests</button>
+            <button className={`rounded border px-3 py-2 text-sm ${activeTab === "notifications" ? "bg-white" : "bg-transparent"}`} onClick={() => setActiveTab("notifications")}>Notifications</button>
+            <button className={`rounded border px-3 py-2 text-sm ${activeTab === "settings" ? "bg-white" : "bg-transparent"}`} onClick={() => setActiveTab("settings")}>Settings</button>
+            <button className="rounded border px-3 py-2 text-sm" onClick={() => void handleSignOut()}>Sign out</button>
+          </div>
         </div>
 
-        <nav className="space-y-3">
-          {tabItems.map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={`flex w-full items-center gap-3 rounded-lg px-4 py-3 font-medium transition ${
-                activeTab === tab.id
-                  ? "border-l-4 border-emerald-600 bg-emerald-100 text-emerald-900"
-                  : "text-emerald-700 hover:bg-emerald-50"
-              }`}
-            >
-              <span className="text-xl">{tab.icon}</span>
-              <span>{tab.label}</span>
-              {tab.id === "notifications" && notifications.length > 0 && (
-                <span className="ml-auto rounded-full bg-emerald-600 px-2 py-0.5 text-xs font-bold text-white">
-                  {notifications.length}
-                </span>
-              )}
-            </button>
-          ))}
-        </nav>
+        {statusMsg ? <p className="mb-4 text-sm text-slate-700">{statusMsg}</p> : null}
 
-        <div className="mt-12 border-t border-emerald-100 pt-6">
-          <button
-            onClick={() => router.push("/")}
-            className="w-full rounded-lg px-4 py-3 font-medium text-emerald-700 transition hover:bg-emerald-50"
-          >
-            Logout
-          </button>
-        </div>
-      </aside>
+        {activeTab === "requests" ? (
+          <div className="grid grid-cols-12 gap-4">
+            <section className="col-span-12 rounded border border-slate-200 bg-white p-4 lg:col-span-4">
+              <h2 className="mb-3 text-sm font-medium text-slate-900">Create New Request</h2>
+              <form onSubmit={handleCreateRequest} className="space-y-3">
+                <input className="h-10 w-full rounded border border-slate-300 px-3 text-sm" placeholder="Request title" value={newRequest.title} onChange={(e) => setNewRequest((prev) => ({ ...prev, title: e.target.value }))} />
+                <input className="h-10 w-full rounded border border-slate-300 px-3 text-sm" placeholder="Servings needed" value={newRequest.quantity} onChange={(e) => setNewRequest((prev) => ({ ...prev, quantity: e.target.value }))} />
+                <input className="h-10 w-full rounded border border-slate-300 px-3 text-sm" placeholder="Food types requested" value={newRequest.foodNeeded} onChange={(e) => setNewRequest((prev) => ({ ...prev, foodNeeded: e.target.value }))} />
+                <input className="h-10 w-full rounded border border-slate-300 px-3 text-sm" placeholder="Food restrictions" value={newRequest.restrictions} onChange={(e) => setNewRequest((prev) => ({ ...prev, restrictions: e.target.value }))} />
+                <input className="h-10 w-full rounded border border-slate-300 px-3 text-sm" placeholder="Pickup window" value={newRequest.pickupWindow} onChange={(e) => setNewRequest((prev) => ({ ...prev, pickupWindow: e.target.value }))} />
+                <select className="h-10 w-full rounded border border-slate-300 px-3 text-sm" value={newRequest.urgency} onChange={(e) => setNewRequest((prev) => ({ ...prev, urgency: e.target.value as "low" | "medium" | "high" }))}>
+                  <option value="low">Low urgency</option>
+                  <option value="medium">Medium urgency</option>
+                  <option value="high">High urgency</option>
+                </select>
+                <textarea className="w-full rounded border border-slate-300 px-3 py-2 text-sm" rows={3} placeholder="Notes" value={newRequest.notes} onChange={(e) => setNewRequest((prev) => ({ ...prev, notes: e.target.value }))} />
+                <button type="submit" className="h-10 w-full rounded bg-emerald-800 text-sm font-medium text-white">Post Request</button>
+              </form>
+            </section>
 
-      <main className="flex-1 p-8">
-        <div className="mx-auto max-w-6xl">
-          {activeTab === "requests" && (
-            <>
-              <div className="mb-8">
-                <h1 className="text-4xl font-bold text-emerald-900">Shelter Home</h1>
-                <p className="mt-2 text-emerald-700">
-                  Create new food requests and track the status of your previous requests.
-                </p>
+            <section className="col-span-12 rounded border border-slate-200 bg-white p-0 lg:col-span-8">
+              <div className="grid grid-cols-12 gap-2 border-b border-slate-200 px-4 py-3 text-xs uppercase text-slate-500">
+                <p className="col-span-3">Request</p>
+                <p className="col-span-1">Urgency</p>
+                <p className="col-span-2">Pickup</p>
+                <p className="col-span-2">Status</p>
+                <p className="col-span-4 text-right">Actions</p>
               </div>
 
-              <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-                <section className="rounded-2xl border-2 border-emerald-100 bg-white p-6 shadow-md">
-                  <h2 className="text-2xl font-bold text-emerald-900">Create New Request</h2>
-                  <p className="mb-5 mt-1 text-sm text-emerald-700">Post what your shelter needs right now.</p>
+              {loading ? (
+                <p className="px-4 py-6 text-sm text-slate-600">Loading requests...</p>
+              ) : requests.length === 0 ? (
+                <p className="px-4 py-6 text-sm text-slate-600">No requests yet. Create your first request.</p>
+              ) : (
+                requests.map((row) => {
+                  const responses = responsesByRequest[row.id] || [];
+                  const pendingResponses = responses.filter((item) => item.status === "pending");
+                  const acceptedResponse = responses.find((item) => item.status === "accepted");
+                  const isEditing = editState?.requestId === row.id;
 
-                  <form onSubmit={handleCreateRequest} className="space-y-4">
-                    <div>
-                      <label className="mb-2 block text-sm font-semibold text-emerald-800">Food Needed</label>
-                      <input
-                        value={newRequest.title}
-                        onChange={(e) => setNewRequest((prev) => ({ ...prev, title: e.target.value }))}
-                        className="w-full rounded-lg border-2 border-emerald-200 px-4 py-3 text-gray-700 focus:border-emerald-500 focus:outline-none"
-                        placeholder="Example: Dinner meals"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="mb-2 block text-sm font-semibold text-emerald-800">Quantity Needed</label>
-                      <input
-                        value={newRequest.quantity}
-                        onChange={(e) => setNewRequest((prev) => ({ ...prev, quantity: e.target.value }))}
-                        className="w-full rounded-lg border-2 border-emerald-200 px-4 py-3 text-gray-700 focus:border-emerald-500 focus:outline-none"
-                        placeholder="Example: 60 meals"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="mb-2 block text-sm font-semibold text-emerald-800">Food Restrictions</label>
-                      <input
-                        value={newRequest.restrictions}
-                        onChange={(e) => setNewRequest((prev) => ({ ...prev, restrictions: e.target.value }))}
-                        className="w-full rounded-lg border-2 border-emerald-200 px-4 py-3 text-gray-700 focus:border-emerald-500 focus:outline-none"
-                        placeholder="Example: Nut-free and vegetarian"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="mb-2 block text-sm font-semibold text-emerald-800">Pickup/Delivery Window</label>
-                      <input
-                        value={newRequest.pickupWindow}
-                        onChange={(e) => setNewRequest((prev) => ({ ...prev, pickupWindow: e.target.value }))}
-                        className="w-full rounded-lg border-2 border-emerald-200 px-4 py-3 text-gray-700 focus:border-emerald-500 focus:outline-none"
-                        placeholder="Example: Today 4:00 PM - 6:00 PM"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="mb-2 block text-sm font-semibold text-emerald-800">Additional Notes</label>
-                      <textarea
-                        value={newRequest.notes}
-                        onChange={(e) => setNewRequest((prev) => ({ ...prev, notes: e.target.value }))}
-                        rows={3}
-                        className="w-full rounded-lg border-2 border-emerald-200 px-4 py-3 text-gray-700 focus:border-emerald-500 focus:outline-none"
-                        placeholder="Any extra details for restaurants"
-                      />
-                    </div>
-
-                    {statusMsg && (
-                      <div className="rounded-lg border border-emerald-300 bg-emerald-50 p-3 text-sm font-medium text-emerald-800">
-                        {statusMsg}
-                      </div>
-                    )}
-
-                    <button
-                      type="submit"
-                      className="w-full rounded-full bg-emerald-600 px-6 py-3 font-semibold text-white shadow-md transition hover:bg-emerald-700"
-                    >
-                      Post Request
-                    </button>
-                  </form>
-                </section>
-
-                <section className="rounded-2xl border-2 border-emerald-100 bg-white p-6 shadow-md">
-                  <h2 className="text-2xl font-bold text-emerald-900">Previous Request Status</h2>
-                  <p className="mb-5 mt-1 text-sm text-emerald-700">Track status updates for your posted requests.</p>
-
-                  <div className="space-y-3">
-                    {requests.length === 0 ? (
-                      <div className="rounded-xl border border-emerald-200 bg-yellow-50 p-4 text-sm text-emerald-800">
-                        No requests posted yet.
-                      </div>
-                    ) : (
-                      requests.map((request) => (
-                        <div key={request.id} className="rounded-xl border border-emerald-200 bg-yellow-50 p-4">
-                          <div className="flex items-center justify-between">
-                            <p className="font-semibold text-emerald-900">{request.title}</p>
-                            <span
-                              className={`rounded-full px-3 py-1 text-xs font-bold ${
-                                request.status === "Pending"
-                                  ? "bg-yellow-100 text-yellow-700"
-                                  : request.status === "Accepted"
-                                  ? "bg-emerald-100 text-emerald-700"
-                                  : request.status === "In Progress"
-                                  ? "bg-blue-100 text-blue-700"
-                                  : "bg-gray-200 text-gray-700"
-                              }`}
-                            >
-                              {request.status}
-                            </span>
-                          </div>
-                          <p className="mt-2 text-sm text-emerald-800">Quantity: {request.quantity}</p>
-                          <p className="text-sm text-emerald-800">Window: {request.pickupWindow}</p>
-                          <p className="mt-2 text-xs text-emerald-600">Posted: {request.createdAt}</p>
+                  return (
+                    <div key={row.id} className="border-t border-slate-200 px-4 py-3 text-sm">
+                      <div className="grid grid-cols-12 gap-2">
+                        <div className="col-span-3">
+                          <p className="font-medium text-slate-900">{row.title}</p>
+                          <p className="text-xs text-slate-500">{row.quantity || "-"} servings</p>
                         </div>
-                      ))
-                    )}
-                  </div>
-                </section>
-              </div>
-            </>
-          )}
+                        <p className="col-span-1 capitalize text-slate-700">{row.urgency}</p>
+                        <p className="col-span-2 text-slate-700">{row.pickup_window || "-"}</p>
+                        <p className="col-span-2 text-slate-700">{mapShelterStatusForUi(row.status)}</p>
+                        <div className="col-span-4 flex justify-end gap-2">
+                          {(canEditCoreRequestFields(row.status) || canEditPickupWindow(row.status)) && (
+                            <button className="rounded border px-2 py-1 text-xs" onClick={() => startEdit(row)}>Edit</button>
+                          )}
+                          {row.status === "open" || row.status === "responded" ? (
+                            <button className="rounded border px-2 py-1 text-xs" onClick={() => void updateRequestStatus(row.id, "cancelled")}>Cancel</button>
+                          ) : null}
+                          {row.status === "matched" ? (
+                            <button className="rounded border px-2 py-1 text-xs" onClick={() => void updateRequestStatus(row.id, "fulfilled")}>Mark Completed</button>
+                          ) : null}
+                        </div>
+                      </div>
 
-          {activeTab === "notifications" && (
-            <>
-              <h1 className="text-4xl font-bold text-emerald-900">Notifications</h1>
-              <p className="mb-6 mt-2 text-emerald-700">Updates and reminders about your shelter requests.</p>
+                      {isEditing ? (
+                        <div className="mt-3 rounded border border-slate-200 bg-slate-50 p-3">
+                          {canEditCoreRequestFields(row.status) ? (
+                            <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+                              <input className="h-9 rounded border border-slate-300 px-2 text-sm" value={editState.title} onChange={(e) => setEditState((prev) => (prev ? { ...prev, title: e.target.value } : prev))} placeholder="Title" />
+                              <input className="h-9 rounded border border-slate-300 px-2 text-sm" value={editState.quantity} onChange={(e) => setEditState((prev) => (prev ? { ...prev, quantity: e.target.value } : prev))} placeholder="Servings" />
+                              <input className="h-9 rounded border border-slate-300 px-2 text-sm" value={editState.foodNeeded} onChange={(e) => setEditState((prev) => (prev ? { ...prev, foodNeeded: e.target.value } : prev))} placeholder="Food requested" />
+                              <input className="h-9 rounded border border-slate-300 px-2 text-sm" value={editState.restrictions} onChange={(e) => setEditState((prev) => (prev ? { ...prev, restrictions: e.target.value } : prev))} placeholder="Restrictions" />
+                              <input className="h-9 rounded border border-slate-300 px-2 text-sm" value={editState.pickupWindow} onChange={(e) => setEditState((prev) => (prev ? { ...prev, pickupWindow: e.target.value } : prev))} placeholder="Pickup window" />
+                              <select className="h-9 rounded border border-slate-300 px-2 text-sm" value={editState.urgency} onChange={(e) => setEditState((prev) => (prev ? { ...prev, urgency: e.target.value as "low" | "medium" | "high" } : prev))}>
+                                <option value="low">Low</option>
+                                <option value="medium">Medium</option>
+                                <option value="high">High</option>
+                              </select>
+                              <textarea className="rounded border border-slate-300 px-2 py-1 text-sm md:col-span-2" rows={2} value={editState.notes} onChange={(e) => setEditState((prev) => (prev ? { ...prev, notes: e.target.value } : prev))} placeholder="Notes" />
+                            </div>
+                          ) : (
+                            <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+                              <input className="h-9 rounded border border-slate-300 px-2 text-sm" value={editState.pickupWindow} onChange={(e) => setEditState((prev) => (prev ? { ...prev, pickupWindow: e.target.value } : prev))} placeholder="Updated pickup window" />
+                              <textarea className="rounded border border-slate-300 px-2 py-1 text-sm" rows={2} value={editState.coordinationNotes} onChange={(e) => setEditState((prev) => (prev ? { ...prev, coordinationNotes: e.target.value } : prev))} placeholder="Coordination notes" />
+                            </div>
+                          )}
+                          <div className="mt-2 flex gap-2">
+                            <button className="rounded bg-emerald-800 px-3 py-1 text-xs text-white" onClick={() => void saveEdit()}>Save</button>
+                            <button className="rounded border px-3 py-1 text-xs" onClick={() => setEditState(null)}>Cancel</button>
+                          </div>
+                        </div>
+                      ) : null}
 
-              <div className="space-y-4">
-                {notifications.length === 0 ? (
-                  <div className="rounded-xl border border-emerald-200 bg-white p-5 text-emerald-800">
-                    No notifications yet.
-                  </div>
-                ) : (
-                  notifications.map((item) => (
-                    <div key={item.id} className="rounded-xl border border-emerald-200 bg-white p-5 shadow-sm">
-                      <p className="font-bold text-emerald-900">{item.title}</p>
-                      <p className="mt-1 text-sm text-emerald-800">{item.message}</p>
-                      <p className="mt-2 text-xs text-emerald-600">{item.createdAt}</p>
+                      {pendingResponses.length > 0 && (row.status === "open" || row.status === "responded") ? (
+                        <div className="mt-3 rounded border border-amber-200 bg-amber-50 p-3">
+                          <p className="mb-2 text-xs font-medium uppercase tracking-wide text-amber-700">Pending Restaurant Responses</p>
+                          <div className="space-y-2">
+                            {pendingResponses.map((response) => (
+                              <div key={response.id} className="flex items-center justify-between rounded border border-amber-200 bg-white px-3 py-2">
+                                <div>
+                                  <p className="text-sm font-medium text-slate-900">{restaurantNames[response.restaurant_id] || "Restaurant"}</p>
+                                  <p className="text-xs text-slate-600">Proposed pickup: {response.proposed_pickup_window || "Not provided"}</p>
+                                  {response.response_note ? <p className="text-xs text-slate-500">{response.response_note}</p> : null}
+                                </div>
+                                <button className="rounded bg-emerald-800 px-3 py-1 text-xs text-white" onClick={() => void acceptResponse(row, response)}>Accept</button>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ) : null}
+
+                      {acceptedResponse && row.status === "matched" ? (
+                        <p className="mt-2 text-xs text-slate-600">
+                          Matched with {restaurantNames[acceptedResponse.restaurant_id] || "Restaurant"}. Proposed pickup: {acceptedResponse.proposed_pickup_window || row.pickup_window || "Not set"}
+                        </p>
+                      ) : null}
                     </div>
-                  ))
-                )}
+                  );
+                })
+              )}
+            </section>
+          </div>
+        ) : activeTab === "notifications" ? (
+          <section className="rounded border border-slate-200 bg-white p-0">
+            {notifications.length === 0 ? (
+              <p className="px-4 py-6 text-sm text-slate-600">No notifications yet.</p>
+            ) : (
+              notifications.map((item) => (
+                <div key={item.id} className="border-t border-slate-200 px-4 py-3 first:border-t-0">
+                  <p className="text-sm font-medium text-slate-900">{item.title}</p>
+                  <p className="text-sm text-slate-600">{item.message}</p>
+                  <p className="text-xs text-slate-500">{item.createdAt}</p>
+                </div>
+              ))
+            )}
+          </section>
+        ) : (
+          <section className="rounded border border-slate-200 bg-white p-4 text-sm text-slate-700">
+            {profile ? (
+              <div className="space-y-2">
+                <p><span className="font-medium text-slate-900">Shelter:</span> {profile.name}</p>
+                <p><span className="font-medium text-slate-900">Email:</span> {profile.email}</p>
+                <p><span className="font-medium text-slate-900">Phone:</span> {profile.phone}</p>
+                <p><span className="font-medium text-slate-900">Address:</span> {profile.address}, {profile.city}, {profile.state} {profile.zip_code}</p>
+                {profile.organization_notes ? <p><span className="font-medium text-slate-900">Notes:</span> {profile.organization_notes}</p> : null}
               </div>
-            </>
-          )}
-
-          {activeTab === "settings" && (
-            <>
-              <h1 className="text-4xl font-bold text-emerald-900">Settings</h1>
-              <p className="mb-6 mt-2 text-emerald-700">Manage your shelter contact and profile settings.</p>
-
-              <div className="rounded-2xl border-2 border-emerald-100 bg-white p-6 shadow-md">
-                <p className="text-lg font-bold text-emerald-900">{profile.shelterName}</p>
-                <p className="mt-2 text-emerald-800">Contact: {profile.contactName}</p>
-                <p className="text-emerald-800">Phone: {profile.phone}</p>
-                <p className="text-emerald-800">Email: {profile.email}</p>
-                <p className="mt-2 text-emerald-800">
-                  {profile.address}, {profile.city}, {profile.state} {profile.zipCode}
-                </p>
-              </div>
-            </>
-          )}
-
-          {activeTab === "ai" && (
-            <>
-              <h1 className="text-4xl font-bold text-emerald-900">Ask AI</h1>
-              <p className="mb-6 mt-2 text-emerald-700">
-                Get help drafting requests, estimating quantities, and planning pickup windows.
-              </p>
-
-              <div className="rounded-2xl border-2 border-emerald-100 bg-white p-6 shadow-md">
-                <p className="font-semibold text-emerald-900">Try asking:</p>
-                <ul className="mt-3 space-y-2 text-sm text-emerald-800">
-                  <li>How many meals should I request for 75 people?</li>
-                  <li>What food categories are easiest for restaurants to donate?</li>
-                  <li>How should I write a clear pickup note?</li>
-                </ul>
-              </div>
-            </>
-          )}
-        </div>
-      </main>
+            ) : (
+              <p>Profile unavailable.</p>
+            )}
+          </section>
+        )}
+      </div>
     </div>
   );
 }

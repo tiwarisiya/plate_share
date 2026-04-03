@@ -2,6 +2,13 @@
 import React, { useState } from "react";
 import { useRouter } from "next/navigation";
 import { getSupabaseClient } from "@/lib/supabaseClient";
+import {
+  getCurrentUserRole,
+  getDashboardPathForRole,
+  getProfileDetailsPathForRole,
+  isRestaurantProfileComplete,
+  isShelterProfileComplete,
+} from "@/lib/flow";
 
 export default function RestaurantLogin() {
   const router = useRouter();
@@ -84,8 +91,24 @@ export default function RestaurantLogin() {
       }
 
       if (authResult.data.user) {
-        console.log("Login successful:", authResult.data.user);
-        router.push("/restaurant/home");
+        const role = await getCurrentUserRole(authResult.data.user.id);
+
+        if (!role) {
+          router.push("/restaurant/register-donor/details");
+          return;
+        }
+
+        const isComplete =
+          role === "restaurant"
+            ? await isRestaurantProfileComplete(authResult.data.user.id)
+            : await isShelterProfileComplete(authResult.data.user.id);
+
+        if (!isComplete) {
+          router.push(getProfileDetailsPathForRole(role));
+          return;
+        }
+
+        router.push(getDashboardPathForRole(role));
       }
     } catch (err: any) {
       console.error("Login error:", err);

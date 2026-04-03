@@ -1,324 +1,198 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { getSupabaseClient } from "@/lib/supabaseClient";
+import { Button } from "@/components/ui/button";
+import { Card, CardBody, CardHeader } from "@/components/ui/card";
+import { Field, Input } from "@/components/ui/field";
+
+type FormData = {
+  email: string;
+  password: string;
+  confirmPassword: string;
+};
 
 export default function ShelterRegisterPage() {
   const router = useRouter();
-  const [formData, setFormData] = useState({
-    shelterName: "",
-    contactName: "",
-    phone: "",
-    email: "",
-    address: "",
-    city: "",
-    state: "",
-    zipCode: "",
-    foodNeeded: "",
-    quantityNeeded: "",
-    foodRestrictions: "",
-    pickupWindow: "",
-    notes: "",
-  });
+  const [loading, setLoading] = useState(false);
+  const [verifying, setVerifying] = useState(false);
+  const [awaitingConfirmation, setAwaitingConfirmation] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [info, setInfo] = useState<string | null>(null);
+  const [formData, setFormData] = useState<FormData>({ email: "", password: "", confirmPassword: "" });
 
-  const handleChange = (
-    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
-  ) => {
-    const { name, value } = e.target;
-    setFormData((prev) => ({ ...prev, [name]: value }));
-  };
-
-  const saveShelterDataToLocal = () => {
+  useEffect(() => {
     if (typeof window === "undefined") return;
+    const pendingRaw = sessionStorage.getItem("pendingShelterSignup");
+    if (!pendingRaw) return;
 
-    const shelterProfile = {
-      shelterName: formData.shelterName,
-      contactName: formData.contactName,
-      phone: formData.phone,
-      email: formData.email,
-      address: formData.address,
-      city: formData.city,
-      state: formData.state,
-      zipCode: formData.zipCode,
-    };
-
-    const newRequest = {
-      id: String(Date.now()),
-      title: `${formData.foodNeeded || "Food"} Request`,
-      quantity: formData.quantityNeeded,
-      restrictions: formData.foodRestrictions,
-      pickupWindow: formData.pickupWindow,
-      status: "Pending" as const,
-      createdAt: new Date().toLocaleString(),
-      notes: formData.notes,
-    };
-
-    const existingRaw = localStorage.getItem("shelterRequests");
-    let existing: typeof newRequest[] = [];
-    if (existingRaw) {
-      try {
-        existing = JSON.parse(existingRaw);
-      } catch {
-        existing = [];
+    try {
+      const pending = JSON.parse(pendingRaw) as { email?: string; password?: string };
+      if (pending.email && pending.password) {
+        setFormData({ email: pending.email, password: pending.password, confirmPassword: pending.password });
+        setAwaitingConfirmation(true);
       }
+    } catch {
+      sessionStorage.removeItem("pendingShelterSignup");
     }
+  }, []);
 
-    localStorage.setItem("shelterProfile", JSON.stringify(shelterProfile));
-    localStorage.setItem("shelterRequests", JSON.stringify([newRequest, ...existing]));
+  const getEmailRedirectTo = () => {
+    if (typeof window === "undefined") return undefined;
+    return `${window.location.origin}/shelter/register`;
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    saveShelterDataToLocal();
-    router.push("/shelter/home");
-  };
+    setLoading(true);
+    setError(null);
+    setInfo(null);
 
-  const handleSkipToDemo = () => {
-    if (typeof window !== "undefined") {
-      const hasProfile = Boolean(localStorage.getItem("shelterProfile"));
-      const hasRequests = Boolean(localStorage.getItem("shelterRequests"));
-
-      if (!hasProfile) {
-        localStorage.setItem(
-          "shelterProfile",
-          JSON.stringify({
-            shelterName: "Hope Center Shelter",
-            contactName: "Jordan Lee",
-            phone: "(555) 123-4567",
-            email: "shelter@example.org",
-            address: "123 Main St",
-            city: "San Jose",
-            state: "CA",
-            zipCode: "95112",
-          })
-        );
-      }
-
-      if (!hasRequests) {
-        localStorage.setItem(
-          "shelterRequests",
-          JSON.stringify([
-            {
-              id: String(Date.now()),
-              title: "Dinner Meal Request",
-              quantity: "50 meals",
-              restrictions: "Nut-free options",
-              pickupWindow: "Today 4:00 PM - 6:00 PM",
-              status: "Pending",
-              createdAt: new Date().toLocaleString(),
-              notes: "Family-friendly meals preferred",
-            },
-          ])
-        );
-      }
+    if (formData.password !== formData.confirmPassword) {
+      setError("Passwords do not match.");
+      setLoading(false);
+      return;
     }
 
-    router.push("/shelter/home");
+    try {
+      const supabase = getSupabaseClient();
+      const { data: authData, error: authError } = await supabase.auth.signUp({
+        email: formData.email,
+        password: formData.password,
+        options: { emailRedirectTo: getEmailRedirectTo() },
+      });
+
+      if (authError) {
+        const duplicateUser = authError.message.toLowerCase().includes("already registered");
+        if (!duplicateUser) {
+          throw new Error(`Account creation failed: ${authError.message}`);
+        }
+        setInfo("Account already exists. Confirm your email and continue.");
+      }
+
+      if (typeof window !== "undefined") {
+        sessionStorage.setItem(
+          "pendingShelterSignup",
+          JSON.stringify({ email: formData.email, password: formData.password })
+        );
+      }
+
+      if (authData.session) {
+        if (typeof window !== "undefined") {
+          sessionStorage.removeItem("pendingShelterSignup");
+        }
+        router.push("/shelter/register/details");
+      } else {
+        setAwaitingConfirmation(true);
+        setInfo("Check your inbox for a verification email, then continue.");
+      }
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to create account.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleContinueAfterVerification = async () => {
+    setVerifying(true);
+    setError(null);
+
+    try {
+      const supabase = getSupabaseClient();
+      const { data, error: signInError } = await supabase.auth.signInWithPassword({
+        email: formData.email,
+        password: formData.password,
+      });
+
+      if (signInError) {
+        throw new Error(signInError.message.includes("Email not confirmed") ? "Email not confirmed yet." : signInError.message);
+      }
+
+      if (!data.session) {
+        throw new Error("No active session found.");
+      }
+
+      if (typeof window !== "undefined") {
+        sessionStorage.removeItem("pendingShelterSignup");
+      }
+
+      router.push("/shelter/register/details");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Verification failed.");
+    } finally {
+      setVerifying(false);
+    }
+  };
+
+  const handleResend = async () => {
+    setError(null);
+    setInfo(null);
+
+    try {
+      const supabase = getSupabaseClient();
+      const { error: resendError } = await supabase.auth.resend({
+        type: "signup",
+        email: formData.email,
+        options: { emailRedirectTo: getEmailRedirectTo() },
+      });
+
+      if (resendError) {
+        throw new Error(resendError.message);
+      }
+
+      setInfo("Verification email sent.");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Could not resend verification email.");
+    }
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-yellow-50 font-sans">
-      <main className="w-full max-w-3xl px-6 py-12">
-        <div className="rounded-2xl bg-white p-8 shadow-xl ring-1 ring-emerald-100">
-          <h1 className="text-3xl font-bold tracking-tight text-emerald-900">
-            Fill out the questions below to make your shelter account!
-          </h1>
-          <p className="mb-8 mt-2 text-emerald-700">
-            Share your shelter needs so restaurants can respond with the right donations.
-          </p>
-
-          <form onSubmit={handleSubmit} className="space-y-6">
-            <div>
-              <label className="mb-2 block text-lg font-semibold text-emerald-900">
-                What is your shelter name?
-              </label>
-              <input
-                name="shelterName"
-                value={formData.shelterName}
-                onChange={handleChange}
-                required
-                placeholder="Enter shelter name"
-                className="w-full rounded-lg border-2 border-emerald-200 px-4 py-3 text-gray-700 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-100"
-              />
-            </div>
-
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-              <div>
-                <label className="mb-2 block font-medium text-emerald-800">Contact Name</label>
-                <input
-                  name="contactName"
-                  value={formData.contactName}
-                  onChange={handleChange}
-                  required
-                  placeholder="Primary contact person"
-                  className="w-full rounded-lg border-2 border-emerald-200 px-4 py-3 text-gray-700 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-100"
-                />
-              </div>
-              <div>
-                <label className="mb-2 block font-medium text-emerald-800">Phone</label>
-                <input
-                  name="phone"
-                  value={formData.phone}
-                  onChange={handleChange}
-                  required
-                  placeholder="(555) 555-5555"
-                  className="w-full rounded-lg border-2 border-emerald-200 px-4 py-3 text-gray-700 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-100"
-                />
-              </div>
-            </div>
-
-            <div>
-              <label className="mb-2 block font-medium text-emerald-800">Email</label>
-              <input
-                type="email"
-                name="email"
-                value={formData.email}
-                onChange={handleChange}
-                required
-                placeholder="shelter@example.org"
-                className="w-full rounded-lg border-2 border-emerald-200 px-4 py-3 text-gray-700 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-100"
-              />
-            </div>
-
-            <div className="space-y-4">
-              <h2 className="text-lg font-semibold text-emerald-900">Location Information</h2>
-              <div>
-                <label className="mb-2 block font-medium text-emerald-800">Address</label>
-                <input
-                  name="address"
-                  value={formData.address}
-                  onChange={handleChange}
-                  required
-                  placeholder="Street address"
-                  className="w-full rounded-lg border-2 border-emerald-200 px-4 py-3 text-gray-700 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-100"
-                />
-              </div>
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-                <div>
-                  <label className="mb-2 block font-medium text-emerald-800">City</label>
-                  <input
-                    name="city"
-                    value={formData.city}
-                    onChange={handleChange}
-                    required
-                    placeholder="City"
-                    className="w-full rounded-lg border-2 border-emerald-200 px-4 py-3 text-gray-700 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-100"
-                  />
-                </div>
-                <div>
-                  <label className="mb-2 block font-medium text-emerald-800">State</label>
-                  <input
-                    name="state"
-                    value={formData.state}
-                    onChange={handleChange}
-                    required
-                    maxLength={2}
-                    placeholder="ST"
-                    className="w-full rounded-lg border-2 border-emerald-200 px-4 py-3 uppercase text-gray-700 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-100"
-                  />
-                </div>
-                <div>
-                  <label className="mb-2 block font-medium text-emerald-800">Zip Code</label>
-                  <input
-                    name="zipCode"
-                    value={formData.zipCode}
-                    onChange={handleChange}
-                    required
-                    maxLength={5}
-                    placeholder="12345"
-                    className="w-full rounded-lg border-2 border-emerald-200 px-4 py-3 text-gray-700 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-100"
-                  />
-                </div>
-              </div>
-            </div>
-
-            <div>
-              <label className="mb-2 block text-lg font-semibold text-emerald-900">
-                What food does your shelter need?
-              </label>
-              <textarea
-                name="foodNeeded"
-                value={formData.foodNeeded}
-                onChange={handleChange}
-                required
-                rows={3}
-                placeholder="Examples: hot meals, sandwiches, produce, dairy"
-                className="w-full rounded-lg border-2 border-emerald-200 px-4 py-3 text-gray-700 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-100"
-              />
-            </div>
-
-            <div>
-              <label className="mb-2 block text-lg font-semibold text-emerald-900">
-                What quantities do you need?
-              </label>
-              <textarea
-                name="quantityNeeded"
-                value={formData.quantityNeeded}
-                onChange={handleChange}
-                required
-                rows={2}
-                placeholder="Example: 50 meals, 30 juice boxes, 20 fruit cups"
-                className="w-full rounded-lg border-2 border-emerald-200 px-4 py-3 text-gray-700 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-100"
-              />
-            </div>
-
-            <div>
-              <label className="mb-2 block text-lg font-semibold text-emerald-900">
-                Any food restrictions?
-              </label>
-              <textarea
-                name="foodRestrictions"
-                value={formData.foodRestrictions}
-                onChange={handleChange}
-                required
-                rows={2}
-                placeholder="Example: nut-free, halal, low sodium, vegetarian options"
-                className="w-full rounded-lg border-2 border-emerald-200 px-4 py-3 text-gray-700 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-100"
-              />
-            </div>
-
-            <div>
-              <label className="mb-2 block text-lg font-semibold text-emerald-900">
-                Preferred pickup or delivery window
-              </label>
-              <input
-                name="pickupWindow"
-                value={formData.pickupWindow}
-                onChange={handleChange}
-                required
-                placeholder="Example: Weekdays 2:00 PM - 4:00 PM"
-                className="w-full rounded-lg border-2 border-emerald-200 px-4 py-3 text-gray-700 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-100"
-              />
-            </div>
-
-            <div>
-              <label className="mb-2 block font-medium text-emerald-800">Additional Notes</label>
-              <textarea
-                name="notes"
-                value={formData.notes}
-                onChange={handleChange}
-                rows={3}
-                placeholder="Anything else restaurants should know"
-                className="w-full rounded-lg border-2 border-emerald-200 px-4 py-3 text-gray-700 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-100"
-              />
-            </div>
-
-            <button
-              type="submit"
-              className="w-full rounded-full bg-emerald-600 px-6 py-3 font-semibold text-white shadow-md transition hover:bg-emerald-700"
-            >
-              Create shelter account
-            </button>
-
-            <button
-              type="button"
-              onClick={handleSkipToDemo}
-              className="w-full rounded-full border-2 border-emerald-600 px-6 py-3 font-semibold text-emerald-700 shadow-sm transition hover:bg-emerald-50"
-            >
-              Skip to Demo (View Home Screen)
-            </button>
-          </form>
+    <div className="min-h-screen bg-slate-50 px-6 py-10">
+      <main className="mx-auto max-w-4xl">
+        <div className="mb-6">
+          <h1 className="text-2xl font-bold text-slate-900">Shelter Onboarding</h1>
+          <p className="mt-1 text-sm text-slate-600">Step 1 of 2: set your credentials and verify your email.</p>
         </div>
+
+        <Card>
+          <CardHeader>
+            <p className="text-sm font-medium text-slate-900">Account Access</p>
+          </CardHeader>
+          <CardBody>
+            <form onSubmit={handleSubmit} className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <div className="md:col-span-2">
+                <Field label="Email">
+                  <Input type="email" value={formData.email} onChange={(e) => setFormData((prev) => ({ ...prev, email: e.target.value }))} placeholder="ops@shelter.org" required />
+                </Field>
+              </div>
+
+              <Field label="Password">
+                <Input type="password" value={formData.password} minLength={6} onChange={(e) => setFormData((prev) => ({ ...prev, password: e.target.value }))} placeholder="At least 6 characters" required />
+              </Field>
+
+              <Field label="Confirm password">
+                <Input type="password" value={formData.confirmPassword} minLength={6} onChange={(e) => setFormData((prev) => ({ ...prev, confirmPassword: e.target.value }))} placeholder="Repeat password" required />
+              </Field>
+
+              {error ? <p className="md:col-span-2 text-sm text-rose-700">{error}</p> : null}
+              {info ? <p className="md:col-span-2 text-sm text-blue-700">{info}</p> : null}
+
+              <div className="md:col-span-2 flex flex-wrap gap-3">
+                <Button type="submit" disabled={loading}>{loading ? "Creating..." : "Create account"}</Button>
+                <Button type="button" variant="secondary" onClick={() => router.push("/shelter/home")}>Skip Demo</Button>
+                {awaitingConfirmation ? (
+                  <>
+                    <Button type="button" variant="secondary" onClick={handleContinueAfterVerification} disabled={verifying}>
+                      {verifying ? "Verifying..." : "Continue after verification"}
+                    </Button>
+                    <Button type="button" variant="ghost" onClick={handleResend}>Resend email</Button>
+                  </>
+                ) : null}
+              </div>
+            </form>
+          </CardBody>
+        </Card>
       </main>
     </div>
   );

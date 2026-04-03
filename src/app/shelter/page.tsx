@@ -2,41 +2,51 @@
 import React from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
+import { Button } from "@/components/ui/button";
+import { Card, CardBody } from "@/components/ui/card";
 
 export default function ShelterEntry() {
   const router = useRouter();
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-yellow-50 font-sans">
-      <main className="w-full max-w-md px-6 py-20">
-        <div className="bg-white ring-1 ring-emerald-100 rounded-2xl shadow-xl p-8 text-center">
-          <div className="flex flex-col items-center gap-4">
-            <div className="h-28 w-28 rounded-xl overflow-hidden bg-emerald-50 flex items-center justify-center shadow-sm">
-              <Image src="/logo.svg" alt="Plate Share logo" width={112} height={112} />
-            </div>
-
-            <h1 className="text-3xl font-semibold text-emerald-900 tracking-tight">Shelter Portal</h1>
-            <p className="text-sm text-emerald-700">Choose how you'd like to proceed - quick login or create a shelter account.</p>
+    <div className="min-h-screen bg-slate-50">
+      <main className="mx-auto grid min-h-screen max-w-6xl grid-cols-12 gap-6 px-6 py-10">
+        <section className="col-span-12 rounded-lg border border-slate-200 bg-white p-8 lg:col-span-8">
+          <div className="mb-6 flex items-center gap-3">
+            <Image src="/logo.svg" alt="Plate Share logo" width={36} height={36} />
+            <p className="text-sm font-semibold text-slate-800">Shelter Workspace</p>
           </div>
 
-          <div className="mt-8 flex flex-col gap-4">
-            <button
-              aria-label="Shelter login"
-              onClick={() => router.push("/shelter/login")}
-              className="w-full rounded-full border-2 border-emerald-500 bg-white px-6 py-3 text-emerald-700 font-medium shadow-sm hover:bg-emerald-50 transition"
-            >
-              Login
-            </button>
+          <h1 className="text-3xl font-bold text-slate-900">Post food needs and coordinate with nearby restaurants</h1>
+          <p className="mt-2 max-w-2xl text-sm text-slate-600">
+            Submit requests, monitor fulfillment status, and communicate with matched restaurant partners.
+          </p>
 
-            <button
-              aria-label="Make an account as a shelter"
-              onClick={() => router.push("/shelter/register")}
-              className="w-full rounded-full bg-emerald-600 px-6 py-3 text-white font-semibold shadow-md hover:bg-emerald-700 transition"
-            >
-              Make an account as a shelter
-            </button>
+          <div className="mt-8 grid grid-cols-1 gap-4 md:grid-cols-3">
+            {[
+              ["Request Intake", "Structured request submission"],
+              ["Status Tracking", "Monitor open and matched requests"],
+              ["Partner Chat", "Coordinate timing and logistics"],
+            ].map((item) => (
+              <Card key={item[0]}>
+                <CardBody>
+                  <p className="text-sm font-medium text-slate-900">{item[0]}</p>
+                  <p className="mt-2 text-xs text-slate-600">{item[1]}</p>
+                </CardBody>
+              </Card>
+            ))}
           </div>
-        </div>
+        </section>
+
+        <section className="col-span-12 lg:col-span-4">
+          <Card>
+            <CardBody className="space-y-3">
+              <p className="text-sm font-medium text-slate-900">Access</p>
+              <Button variant="secondary" className="w-full" onClick={() => router.push("/shelter/login")}>Sign in</Button>
+              <Button className="w-full" onClick={() => router.push("/shelter/register")}>Create shelter account</Button>
+            </CardBody>
+          </Card>
+        </section>
       </main>
     </div>
   );
