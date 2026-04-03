@@ -3,7 +3,12 @@
 import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { getSupabaseClient } from "@/lib/supabaseClient";
-import { getCurrentUserRole } from "@/lib/flow";
+import {
+  getAuthenticatedUserDefaultRoute,
+  getCurrentUserRole,
+  getDashboardPathForRole,
+  isShelterProfileComplete,
+} from "@/lib/flow";
 import { Button } from "@/components/ui/button";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { Field, Input, TextArea } from "@/components/ui/field";
@@ -39,8 +44,22 @@ export default function ShelterRegisterDetailsPage() {
 
         const existingRole = await getCurrentUserRole(data.user.id);
         if (existingRole && existingRole !== "shelter") {
-          await supabase.auth.signOut();
-          router.replace("/shelter/login");
+          const routeForRole = await getAuthenticatedUserDefaultRoute(data.user.id, existingRole);
+          router.replace(routeForRole);
+          return;
+        }
+
+        if (existingRole === "shelter") {
+          const complete = await isShelterProfileComplete(data.user.id);
+          if (complete) {
+            router.replace(getDashboardPathForRole("shelter"));
+            return;
+          }
+        }
+
+        if (!existingRole) {
+          setSessionUserId(data.user.id);
+          setFormData((prev) => ({ ...prev, email: data.user?.email || prev.email }));
           return;
         }
 

@@ -118,94 +118,72 @@ export default function RestaurantLogin() {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-yellow-50 font-sans">
-      <main className="w-full max-w-md px-6 py-24">
-        <div className="bg-white ring-1 ring-emerald-100 rounded-2xl shadow-xl p-8">
-          <h1 className="text-3xl font-semibold text-emerald-900 text-center mb-4">
-            Restaurant Login
-          </h1>
-          <p className="text-sm text-emerald-700 text-center mb-8">
-            Enter your email or phone number and password to access your account.
-          </p>
+    <div className="flex min-h-screen items-center justify-center bg-slate-50 px-6 py-10">
+      <main className="w-full max-w-md rounded-lg border border-slate-200 bg-white p-6">
+        <h1 className="text-xl font-semibold text-slate-900">Restaurant Sign In</h1>
+        <p className="mt-1 text-sm text-slate-600">Use your restaurant account credentials.</p>
 
-          <form onSubmit={handleSubmit} className="space-y-6">
-            <div>
-              <label className="block text-lg font-medium text-emerald-900 mb-2">
-                Email or Phone
-              </label>
-              <input
-                type="text"
-                name="identifier"
-                value={form.identifier}
-                onChange={handleChange}
-                required
-                className="w-full px-4 py-3 border-2 border-emerald-200 rounded-lg focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 text-gray-700"
-                placeholder="example@restaurant.com or 555-555-5555"
-              />
-            </div>
+        <form onSubmit={handleSubmit} className="mt-6 space-y-4">
+          <div>
+            <label className="mb-1 block text-sm font-medium text-slate-700">Email or Phone</label>
+            <input
+              type="text"
+              name="identifier"
+              value={form.identifier}
+              onChange={handleChange}
+              required
+              placeholder="example@restaurant.com or 555-555-5555"
+              className="h-10 w-full rounded-md border border-slate-300 px-3 text-sm"
+            />
+          </div>
 
-            <div>
-              <label className="block text-lg font-medium text-emerald-900 mb-2">
-                Password
-              </label>
-              <input
-                type="password"
-                name="password"
-                value={form.password}
-                onChange={handleChange}
-                required
-                className="w-full px-4 py-3 border-2 border-emerald-200 rounded-lg focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 text-gray-700"
-                placeholder="••••••••"
-              />
-            </div>
+          <div>
+            <label className="mb-1 block text-sm font-medium text-slate-700">Password</label>
+            <input
+              type="password"
+              name="password"
+              value={form.password}
+              onChange={handleChange}
+              required
+              className="h-10 w-full rounded-md border border-slate-300 px-3 text-sm"
+            />
+          </div>
 
-            {/* Error Message */}
-            {error && (
-              <div className="p-4 bg-red-50 border-2 border-red-200 rounded-lg">
-                <p className="text-red-700 font-medium">{error}</p>
-              </div>
-            )}
+          {error ? <p className="text-sm text-rose-700">{error}</p> : null}
 
+          <button
+            disabled={loading}
+            type="submit"
+            className="h-10 w-full rounded-md bg-emerald-800 text-sm font-medium text-white disabled:opacity-50"
+          >
+            {loading ? "Signing in..." : "Sign In"}
+          </button>
+        </form>
+
+        <p className="mt-4 text-sm text-slate-600">
+          No account?{" "}
+          <button onClick={() => router.push("/restaurant/register-donor")} className="font-medium text-emerald-800">
+            Create one
+          </button>
+        </p>
+
+        <div className="mt-6 border-t border-slate-200 pt-4">
+          <p className="mb-2 text-xs text-slate-500">Need another verification email?</p>
+          <div className="flex gap-2">
+            <input
+              type="email"
+              value={resendEmail}
+              onChange={(e) => setResendEmail(e.target.value)}
+              placeholder="email@example.org"
+              className="h-9 flex-1 rounded-md border border-slate-300 px-2 text-sm"
+            />
             <button
-              type="submit"
+              onClick={handleResendConfirmation}
               disabled={loading}
-              className="w-full rounded-full bg-emerald-600 px-6 py-3 text-white font-semibold shadow-md hover:bg-emerald-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+              className="h-9 rounded-md border border-slate-300 px-3 text-sm disabled:opacity-50"
             >
-              {loading ? "Signing in..." : "Sign In"}
+              Resend
             </button>
-          </form>
-
-          <p className="text-sm text-emerald-700 text-center mt-6">
-            Don't have an account?{' '}
-            <button
-              onClick={() => router.push('/restaurant/register-donor')}
-              className="text-emerald-600 font-medium hover:underline"
-            >
-              Create one
-            </button>
-          </p>
-
-          {/* Resend Confirmation Email */}
-          <div className="mt-8 pt-6 border-t border-emerald-200">
-            <p className="text-sm text-emerald-700 text-center mb-4">
-              Didn't receive confirmation email?
-            </p>
-            <div className="flex gap-2">
-              <input
-                type="email"
-                value={resendEmail}
-                onChange={(e) => setResendEmail(e.target.value)}
-                placeholder="Enter your email"
-                className="flex-1 px-3 py-2 border-2 border-emerald-200 rounded-lg focus:outline-none focus:border-emerald-500 text-sm"
-              />
-              <button
-                onClick={handleResendConfirmation}
-                disabled={loading}
-                className="px-4 py-2 bg-emerald-600 text-white text-sm font-medium rounded-lg hover:bg-emerald-700 transition disabled:opacity-50"
-              >
-                Resend
-              </button>
-            </div>
           </div>
         </div>
       </main>

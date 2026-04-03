@@ -21,6 +21,14 @@ export function getDashboardPathForRole(role: AppRole): string {
   return role === "restaurant" ? "/restaurant/home" : "/shelter/home";
 }
 
+export function getLoginPathForRole(role: AppRole): string {
+  return role === "restaurant" ? "/restaurant/login" : "/shelter/login";
+}
+
+export function getRegisterPathForRole(role: AppRole): string {
+  return role === "restaurant" ? "/restaurant/register-donor" : "/shelter/register";
+}
+
 export function getProfileDetailsPathForRole(role: AppRole): string {
   return role === "restaurant" ? "/restaurant/register-donor/details" : "/shelter/register/details";
 }
@@ -56,7 +64,10 @@ export async function isRestaurantProfileComplete(userId: string): Promise<boole
       .single(),
   ]);
 
-  const baseComplete = isBaseProfileComplete((profile as ProfileRow) || null);
+  const typedProfile = (profile as ProfileRow) || null;
+  const baseComplete = isBaseProfileComplete(typedProfile);
+  if (!typedProfile || typedProfile.role !== "restaurant") return false;
+
   return Boolean(baseComplete && donation?.food_type);
 }
 
@@ -68,7 +79,41 @@ export async function isShelterProfileComplete(userId: string): Promise<boolean>
     .eq("id", userId)
     .single();
 
-  return isBaseProfileComplete((profile as ProfileRow) || null);
+  const typedProfile = (profile as ProfileRow) || null;
+  return Boolean(typedProfile?.role === "shelter" && isBaseProfileComplete(typedProfile));
+}
+
+export async function isRoleProfileComplete(role: AppRole, userId: string): Promise<boolean> {
+  if (role === "restaurant") {
+    return isRestaurantProfileComplete(userId);
+  }
+
+  return isShelterProfileComplete(userId);
+}
+
+export async function getRoleGuardRedirect(expectedRole: AppRole, userId: string): Promise<string | null> {
+  const role = await getCurrentUserRole(userId);
+
+  if (!role) {
+    return getProfileDetailsPathForRole(expectedRole);
+  }
+
+  if (role !== expectedRole) {
+    const otherRoleComplete = await isRoleProfileComplete(role, userId);
+    return otherRoleComplete ? getDashboardPathForRole(role) : getProfileDetailsPathForRole(role);
+  }
+
+  const isComplete = await isRoleProfileComplete(expectedRole, userId);
+  return isComplete ? null : getProfileDetailsPathForRole(expectedRole);
+}
+
+export async function getAuthenticatedUserDefaultRoute(
+  userId: string,
+  preferredRole: AppRole
+): Promise<string> {
+  const role = (await getCurrentUserRole(userId)) || preferredRole;
+  const isComplete = await isRoleProfileComplete(role, userId);
+  return isComplete ? getDashboardPathForRole(role) : getProfileDetailsPathForRole(role);
 }
 
 export async function getCurrentUserRole(userId: string): Promise<AppRole | null> {

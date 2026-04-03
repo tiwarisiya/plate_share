@@ -11,8 +11,12 @@ import {
   mapShelterStatusForUi,
   ShelterRequestStatus,
 } from "@/lib/flow";
+import { Sidebar } from "@/components/ui/sidebar";
+import { Button } from "@/components/ui/button";
 
 type Tab = "requests" | "notifications" | "settings";
+
+type SettingsTab = "account" | "location" | "security";
 
 type RequestRow = {
   id: string;
@@ -93,6 +97,7 @@ const initialRequestState: NewRequestState = {
 export default function ShelterHomePage() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<Tab>("requests");
+  const [activeSettingsTab, setActiveSettingsTab] = useState<SettingsTab>("account");
   const [loading, setLoading] = useState(true);
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
@@ -102,6 +107,15 @@ export default function ShelterHomePage() {
   const [restaurantNames, setRestaurantNames] = useState<Record<string, string>>({});
   const [newRequest, setNewRequest] = useState<NewRequestState>(initialRequestState);
   const [editState, setEditState] = useState<EditState | null>(null);
+  const [name, setName] = useState("");
+  const [phone, setPhone] = useState("");
+  const [email, setEmail] = useState("");
+  const [address, setAddress] = useState("");
+  const [city, setCity] = useState("");
+  const [state, setState] = useState("");
+  const [zip, setZip] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
 
   const loadDashboard = async () => {
     setLoading(true);
@@ -119,8 +133,7 @@ export default function ShelterHomePage() {
 
     const role = await getCurrentUserRole(user.id);
     if (role && role !== "shelter") {
-      await supabase.auth.signOut();
-      router.replace("/shelter/login");
+      router.push("/restaurant/home");
       return;
     }
 
@@ -140,6 +153,15 @@ export default function ShelterHomePage() {
 
     if (profileRow) {
       setProfile(profileRow as ProfileRow);
+      setName(profileRow.name || "");
+      setPhone(profileRow.phone || "");
+      setEmail(profileRow.email || user.email || "");
+      setAddress(profileRow.address || "");
+      setCity(profileRow.city || "");
+      setState(profileRow.state || "");
+      setZip(profileRow.zip_code || "");
+    } else {
+      setEmail(user.email || "");
     }
 
     const { data: requestRows } = await supabase
@@ -409,181 +431,348 @@ export default function ShelterHomePage() {
       }));
   }, [requests]);
 
+  const navItems = useMemo(
+    () => [
+      { id: "requests", label: "Requests", icon: "📋", onClick: () => setActiveTab("requests") },
+      {
+        id: "notifications",
+        label: "Notifications",
+        icon: "🔔",
+        onClick: () => setActiveTab("notifications"),
+        count: notifications.length,
+      },
+      { id: "settings", label: "Settings", icon: "⚙️", onClick: () => setActiveTab("settings") },
+    ],
+    [notifications.length]
+  );
+
   const handleSignOut = async () => {
     const supabase = getSupabaseClient();
     await supabase.auth.signOut();
     router.replace("/");
   };
 
+  const saveAccount = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!userId) return;
+
+    const supabase = getSupabaseClient();
+    const { error } = await supabase
+      .from("profiles")
+      .update({ name, phone, email })
+      .eq("id", userId);
+
+    if (error) {
+      setStatusMsg(`Failed to save account: ${error.message}`);
+      return;
+    }
+
+    setProfile((prev) =>
+      prev
+        ? {
+            ...prev,
+            name,
+            phone,
+            email,
+          }
+        : prev
+    );
+    setStatusMsg("Account settings saved.");
+  };
+
+  const saveLocation = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!userId) return;
+
+    const supabase = getSupabaseClient();
+    const { error } = await supabase
+      .from("profiles")
+      .update({ address, city, state, zip_code: zip })
+      .eq("id", userId);
+
+    if (error) {
+      setStatusMsg(`Failed to save location: ${error.message}`);
+      return;
+    }
+
+    setProfile((prev) =>
+      prev
+        ? {
+            ...prev,
+            address,
+            city,
+            state,
+            zip_code: zip,
+          }
+        : prev
+    );
+    setStatusMsg("Location settings saved.");
+  };
+
+  const saveSecurity = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newPassword || newPassword !== confirmPassword) {
+      setStatusMsg("Passwords must match.");
+      return;
+    }
+
+    const supabase = getSupabaseClient();
+    const { error } = await supabase.auth.updateUser({ password: newPassword });
+
+    if (error) {
+      setStatusMsg(`Failed to update password: ${error.message}`);
+      return;
+    }
+
+    setNewPassword("");
+    setConfirmPassword("");
+    setStatusMsg("Password updated.");
+  };
+
   return (
-    <div className="min-h-screen bg-slate-50 p-6">
-      <div className="mx-auto max-w-7xl">
-        <div className="mb-4 flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-semibold text-slate-900">Shelter Request Management</h1>
-            <p className="text-sm text-slate-600">Create requests, review restaurant responses, and manage fulfillment states.</p>
+    <div className="flex min-h-screen bg-slate-50">
+      <Sidebar
+        title="Plate Share"
+        subtitle="Shelter Operations"
+        items={navItems}
+        activeId={activeTab}
+        footerLabel="Sign out"
+        onFooterClick={() => void handleSignOut()}
+      />
+
+      <main className="flex-1 px-6 py-6">
+        <div className="mx-auto max-w-7xl">
+          <div className="mb-4">
+            <h1 className="text-2xl font-semibold text-slate-900">{activeTab === "settings" ? "Shelter Profile" : "Shelter Request Management"}</h1>
+            <p className="text-sm text-slate-600">
+              {activeTab === "settings"
+                ? "Manage account, location, and security controls."
+                : "Create requests, review restaurant responses, and manage fulfillment states."}
+            </p>
           </div>
-          <div className="flex gap-2">
-            <button className={`rounded border px-3 py-2 text-sm ${activeTab === "requests" ? "bg-white" : "bg-transparent"}`} onClick={() => setActiveTab("requests")}>Requests</button>
-            <button className={`rounded border px-3 py-2 text-sm ${activeTab === "notifications" ? "bg-white" : "bg-transparent"}`} onClick={() => setActiveTab("notifications")}>Notifications</button>
-            <button className={`rounded border px-3 py-2 text-sm ${activeTab === "settings" ? "bg-white" : "bg-transparent"}`} onClick={() => setActiveTab("settings")}>Settings</button>
-            <button className="rounded border px-3 py-2 text-sm" onClick={() => void handleSignOut()}>Sign out</button>
-          </div>
-        </div>
 
-        {statusMsg ? <p className="mb-4 text-sm text-slate-700">{statusMsg}</p> : null}
+          {statusMsg ? <p className="mb-4 text-sm text-slate-700">{statusMsg}</p> : null}
 
-        {activeTab === "requests" ? (
-          <div className="grid grid-cols-12 gap-4">
-            <section className="col-span-12 rounded border border-slate-200 bg-white p-4 lg:col-span-4">
-              <h2 className="mb-3 text-sm font-medium text-slate-900">Create New Request</h2>
-              <form onSubmit={handleCreateRequest} className="space-y-3">
-                <input className="h-10 w-full rounded border border-slate-300 px-3 text-sm" placeholder="Request title" value={newRequest.title} onChange={(e) => setNewRequest((prev) => ({ ...prev, title: e.target.value }))} />
-                <input className="h-10 w-full rounded border border-slate-300 px-3 text-sm" placeholder="Servings needed" value={newRequest.quantity} onChange={(e) => setNewRequest((prev) => ({ ...prev, quantity: e.target.value }))} />
-                <input className="h-10 w-full rounded border border-slate-300 px-3 text-sm" placeholder="Food types requested" value={newRequest.foodNeeded} onChange={(e) => setNewRequest((prev) => ({ ...prev, foodNeeded: e.target.value }))} />
-                <input className="h-10 w-full rounded border border-slate-300 px-3 text-sm" placeholder="Food restrictions" value={newRequest.restrictions} onChange={(e) => setNewRequest((prev) => ({ ...prev, restrictions: e.target.value }))} />
-                <input className="h-10 w-full rounded border border-slate-300 px-3 text-sm" placeholder="Pickup window" value={newRequest.pickupWindow} onChange={(e) => setNewRequest((prev) => ({ ...prev, pickupWindow: e.target.value }))} />
-                <select className="h-10 w-full rounded border border-slate-300 px-3 text-sm" value={newRequest.urgency} onChange={(e) => setNewRequest((prev) => ({ ...prev, urgency: e.target.value as "low" | "medium" | "high" }))}>
-                  <option value="low">Low urgency</option>
-                  <option value="medium">Medium urgency</option>
-                  <option value="high">High urgency</option>
-                </select>
-                <textarea className="w-full rounded border border-slate-300 px-3 py-2 text-sm" rows={3} placeholder="Notes" value={newRequest.notes} onChange={(e) => setNewRequest((prev) => ({ ...prev, notes: e.target.value }))} />
-                <button type="submit" className="h-10 w-full rounded bg-emerald-800 text-sm font-medium text-white">Post Request</button>
-              </form>
-            </section>
+          {activeTab === "requests" ? (
+            <div className="grid grid-cols-12 gap-4">
+              <section className="col-span-12 rounded border border-slate-200 bg-white p-4 lg:col-span-4">
+                <h2 className="mb-3 text-sm font-medium text-slate-900">Create New Request</h2>
+                <form onSubmit={handleCreateRequest} className="space-y-3">
+                  <input className="h-10 w-full rounded border border-slate-300 px-3 text-sm" placeholder="Request title" value={newRequest.title} onChange={(e) => setNewRequest((prev) => ({ ...prev, title: e.target.value }))} />
+                  <input className="h-10 w-full rounded border border-slate-300 px-3 text-sm" placeholder="Servings needed" value={newRequest.quantity} onChange={(e) => setNewRequest((prev) => ({ ...prev, quantity: e.target.value }))} />
+                  <input className="h-10 w-full rounded border border-slate-300 px-3 text-sm" placeholder="Food types requested" value={newRequest.foodNeeded} onChange={(e) => setNewRequest((prev) => ({ ...prev, foodNeeded: e.target.value }))} />
+                  <input className="h-10 w-full rounded border border-slate-300 px-3 text-sm" placeholder="Food restrictions" value={newRequest.restrictions} onChange={(e) => setNewRequest((prev) => ({ ...prev, restrictions: e.target.value }))} />
+                  <input className="h-10 w-full rounded border border-slate-300 px-3 text-sm" placeholder="Pickup window" value={newRequest.pickupWindow} onChange={(e) => setNewRequest((prev) => ({ ...prev, pickupWindow: e.target.value }))} />
+                  <select className="h-10 w-full rounded border border-slate-300 px-3 text-sm" value={newRequest.urgency} onChange={(e) => setNewRequest((prev) => ({ ...prev, urgency: e.target.value as "low" | "medium" | "high" }))}>
+                    <option value="low">Low urgency</option>
+                    <option value="medium">Medium urgency</option>
+                    <option value="high">High urgency</option>
+                  </select>
+                  <textarea className="w-full rounded border border-slate-300 px-3 py-2 text-sm" rows={3} placeholder="Notes" value={newRequest.notes} onChange={(e) => setNewRequest((prev) => ({ ...prev, notes: e.target.value }))} />
+                  <button type="submit" className="h-10 w-full rounded bg-emerald-800 text-sm font-medium text-white">Post Request</button>
+                </form>
+              </section>
 
-            <section className="col-span-12 rounded border border-slate-200 bg-white p-0 lg:col-span-8">
-              <div className="grid grid-cols-12 gap-2 border-b border-slate-200 px-4 py-3 text-xs uppercase text-slate-500">
-                <p className="col-span-3">Request</p>
-                <p className="col-span-1">Urgency</p>
-                <p className="col-span-2">Pickup</p>
-                <p className="col-span-2">Status</p>
-                <p className="col-span-4 text-right">Actions</p>
-              </div>
+              <section className="col-span-12 rounded border border-slate-200 bg-white p-0 lg:col-span-8">
+                <div className="grid grid-cols-12 gap-2 border-b border-slate-200 px-4 py-3 text-xs uppercase text-slate-500">
+                  <p className="col-span-3">Request</p>
+                  <p className="col-span-1">Urgency</p>
+                  <p className="col-span-2">Pickup</p>
+                  <p className="col-span-2">Status</p>
+                  <p className="col-span-4 text-right">Actions</p>
+                </div>
 
-              {loading ? (
-                <p className="px-4 py-6 text-sm text-slate-600">Loading requests...</p>
-              ) : requests.length === 0 ? (
-                <p className="px-4 py-6 text-sm text-slate-600">No requests yet. Create your first request.</p>
-              ) : (
-                requests.map((row) => {
-                  const responses = responsesByRequest[row.id] || [];
-                  const pendingResponses = responses.filter((item) => item.status === "pending");
-                  const acceptedResponse = responses.find((item) => item.status === "accepted");
-                  const isEditing = editState?.requestId === row.id;
+                {loading ? (
+                  <p className="px-4 py-6 text-sm text-slate-600">Loading requests...</p>
+                ) : requests.length === 0 ? (
+                  <p className="px-4 py-6 text-sm text-slate-600">No requests yet. Create your first request.</p>
+                ) : (
+                  requests.map((row) => {
+                    const responses = responsesByRequest[row.id] || [];
+                    const pendingResponses = responses.filter((item) => item.status === "pending");
+                    const acceptedResponse = responses.find((item) => item.status === "accepted");
+                    const isEditing = editState?.requestId === row.id;
 
-                  return (
-                    <div key={row.id} className="border-t border-slate-200 px-4 py-3 text-sm">
-                      <div className="grid grid-cols-12 gap-2">
-                        <div className="col-span-3">
-                          <p className="font-medium text-slate-900">{row.title}</p>
-                          <p className="text-xs text-slate-500">{row.quantity || "-"} servings</p>
-                        </div>
-                        <p className="col-span-1 capitalize text-slate-700">{row.urgency}</p>
-                        <p className="col-span-2 text-slate-700">{row.pickup_window || "-"}</p>
-                        <p className="col-span-2 text-slate-700">{mapShelterStatusForUi(row.status)}</p>
-                        <div className="col-span-4 flex justify-end gap-2">
-                          {(canEditCoreRequestFields(row.status) || canEditPickupWindow(row.status)) && (
-                            <button className="rounded border px-2 py-1 text-xs" onClick={() => startEdit(row)}>Edit</button>
-                          )}
-                          {row.status === "open" || row.status === "responded" ? (
-                            <button className="rounded border px-2 py-1 text-xs" onClick={() => void updateRequestStatus(row.id, "cancelled")}>Cancel</button>
-                          ) : null}
-                          {row.status === "matched" ? (
-                            <button className="rounded border px-2 py-1 text-xs" onClick={() => void updateRequestStatus(row.id, "fulfilled")}>Mark Completed</button>
-                          ) : null}
-                        </div>
-                      </div>
-
-                      {isEditing ? (
-                        <div className="mt-3 rounded border border-slate-200 bg-slate-50 p-3">
-                          {canEditCoreRequestFields(row.status) ? (
-                            <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
-                              <input className="h-9 rounded border border-slate-300 px-2 text-sm" value={editState.title} onChange={(e) => setEditState((prev) => (prev ? { ...prev, title: e.target.value } : prev))} placeholder="Title" />
-                              <input className="h-9 rounded border border-slate-300 px-2 text-sm" value={editState.quantity} onChange={(e) => setEditState((prev) => (prev ? { ...prev, quantity: e.target.value } : prev))} placeholder="Servings" />
-                              <input className="h-9 rounded border border-slate-300 px-2 text-sm" value={editState.foodNeeded} onChange={(e) => setEditState((prev) => (prev ? { ...prev, foodNeeded: e.target.value } : prev))} placeholder="Food requested" />
-                              <input className="h-9 rounded border border-slate-300 px-2 text-sm" value={editState.restrictions} onChange={(e) => setEditState((prev) => (prev ? { ...prev, restrictions: e.target.value } : prev))} placeholder="Restrictions" />
-                              <input className="h-9 rounded border border-slate-300 px-2 text-sm" value={editState.pickupWindow} onChange={(e) => setEditState((prev) => (prev ? { ...prev, pickupWindow: e.target.value } : prev))} placeholder="Pickup window" />
-                              <select className="h-9 rounded border border-slate-300 px-2 text-sm" value={editState.urgency} onChange={(e) => setEditState((prev) => (prev ? { ...prev, urgency: e.target.value as "low" | "medium" | "high" } : prev))}>
-                                <option value="low">Low</option>
-                                <option value="medium">Medium</option>
-                                <option value="high">High</option>
-                              </select>
-                              <textarea className="rounded border border-slate-300 px-2 py-1 text-sm md:col-span-2" rows={2} value={editState.notes} onChange={(e) => setEditState((prev) => (prev ? { ...prev, notes: e.target.value } : prev))} placeholder="Notes" />
-                            </div>
-                          ) : (
-                            <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
-                              <input className="h-9 rounded border border-slate-300 px-2 text-sm" value={editState.pickupWindow} onChange={(e) => setEditState((prev) => (prev ? { ...prev, pickupWindow: e.target.value } : prev))} placeholder="Updated pickup window" />
-                              <textarea className="rounded border border-slate-300 px-2 py-1 text-sm" rows={2} value={editState.coordinationNotes} onChange={(e) => setEditState((prev) => (prev ? { ...prev, coordinationNotes: e.target.value } : prev))} placeholder="Coordination notes" />
-                            </div>
-                          )}
-                          <div className="mt-2 flex gap-2">
-                            <button className="rounded bg-emerald-800 px-3 py-1 text-xs text-white" onClick={() => void saveEdit()}>Save</button>
-                            <button className="rounded border px-3 py-1 text-xs" onClick={() => setEditState(null)}>Cancel</button>
+                    return (
+                      <div key={row.id} className="border-t border-slate-200 px-4 py-3 text-sm">
+                        <div className="grid grid-cols-12 gap-2">
+                          <div className="col-span-3">
+                            <p className="font-medium text-slate-900">{row.title}</p>
+                            <p className="text-xs text-slate-500">{row.quantity || "-"} servings</p>
+                          </div>
+                          <p className="col-span-1 capitalize text-slate-700">{row.urgency}</p>
+                          <p className="col-span-2 text-slate-700">{row.pickup_window || "-"}</p>
+                          <p className="col-span-2 text-slate-700">{mapShelterStatusForUi(row.status)}</p>
+                          <div className="col-span-4 flex justify-end gap-2">
+                            {(canEditCoreRequestFields(row.status) || canEditPickupWindow(row.status)) && (
+                              <Button size="sm" variant="secondary" onClick={() => startEdit(row)}>Edit</Button>
+                            )}
+                            {row.status === "open" || row.status === "responded" ? (
+                              <Button size="sm" variant="danger" onClick={() => void updateRequestStatus(row.id, "cancelled")}>Cancel</Button>
+                            ) : null}
+                            {row.status === "matched" ? (
+                              <Button size="sm" variant="primary" onClick={() => void updateRequestStatus(row.id, "fulfilled")}>Mark Completed</Button>
+                            ) : null}
                           </div>
                         </div>
-                      ) : null}
 
-                      {pendingResponses.length > 0 && (row.status === "open" || row.status === "responded") ? (
-                        <div className="mt-3 rounded border border-amber-200 bg-amber-50 p-3">
-                          <p className="mb-2 text-xs font-medium uppercase tracking-wide text-amber-700">Pending Restaurant Responses</p>
-                          <div className="space-y-2">
-                            {pendingResponses.map((response) => (
-                              <div key={response.id} className="flex items-center justify-between rounded border border-amber-200 bg-white px-3 py-2">
-                                <div>
-                                  <p className="text-sm font-medium text-slate-900">{restaurantNames[response.restaurant_id] || "Restaurant"}</p>
-                                  <p className="text-xs text-slate-600">Proposed pickup: {response.proposed_pickup_window || "Not provided"}</p>
-                                  {response.response_note ? <p className="text-xs text-slate-500">{response.response_note}</p> : null}
-                                </div>
-                                <button className="rounded bg-emerald-800 px-3 py-1 text-xs text-white" onClick={() => void acceptResponse(row, response)}>Accept</button>
+                        {isEditing ? (
+                          <div className="mt-3 rounded border border-slate-200 bg-slate-50 p-3">
+                            {canEditCoreRequestFields(row.status) ? (
+                              <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+                                <input className="h-9 rounded border border-slate-300 px-2 text-sm" value={editState.title} onChange={(e) => setEditState((prev) => (prev ? { ...prev, title: e.target.value } : prev))} placeholder="Title" />
+                                <input className="h-9 rounded border border-slate-300 px-2 text-sm" value={editState.quantity} onChange={(e) => setEditState((prev) => (prev ? { ...prev, quantity: e.target.value } : prev))} placeholder="Servings" />
+                                <input className="h-9 rounded border border-slate-300 px-2 text-sm" value={editState.foodNeeded} onChange={(e) => setEditState((prev) => (prev ? { ...prev, foodNeeded: e.target.value } : prev))} placeholder="Food requested" />
+                                <input className="h-9 rounded border border-slate-300 px-2 text-sm" value={editState.restrictions} onChange={(e) => setEditState((prev) => (prev ? { ...prev, restrictions: e.target.value } : prev))} placeholder="Restrictions" />
+                                <input className="h-9 rounded border border-slate-300 px-2 text-sm" value={editState.pickupWindow} onChange={(e) => setEditState((prev) => (prev ? { ...prev, pickupWindow: e.target.value } : prev))} placeholder="Pickup window" />
+                                <select className="h-9 rounded border border-slate-300 px-2 text-sm" value={editState.urgency} onChange={(e) => setEditState((prev) => (prev ? { ...prev, urgency: e.target.value as "low" | "medium" | "high" } : prev))}>
+                                  <option value="low">Low</option>
+                                  <option value="medium">Medium</option>
+                                  <option value="high">High</option>
+                                </select>
+                                <textarea className="rounded border border-slate-300 px-2 py-1 text-sm md:col-span-2" rows={2} value={editState.notes} onChange={(e) => setEditState((prev) => (prev ? { ...prev, notes: e.target.value } : prev))} placeholder="Notes" />
                               </div>
-                            ))}
+                            ) : (
+                              <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+                                <input className="h-9 rounded border border-slate-300 px-2 text-sm" value={editState.pickupWindow} onChange={(e) => setEditState((prev) => (prev ? { ...prev, pickupWindow: e.target.value } : prev))} placeholder="Updated pickup window" />
+                                <textarea className="rounded border border-slate-300 px-2 py-1 text-sm" rows={2} value={editState.coordinationNotes} onChange={(e) => setEditState((prev) => (prev ? { ...prev, coordinationNotes: e.target.value } : prev))} placeholder="Coordination notes" />
+                              </div>
+                            )}
+                            <div className="mt-2 flex gap-2">
+                              <button className="rounded bg-emerald-800 px-3 py-1 text-xs text-white" onClick={() => void saveEdit()}>Save</button>
+                              <button className="rounded border px-3 py-1 text-xs" onClick={() => setEditState(null)}>Cancel</button>
+                            </div>
                           </div>
-                        </div>
-                      ) : null}
+                        ) : null}
 
-                      {acceptedResponse && row.status === "matched" ? (
-                        <p className="mt-2 text-xs text-slate-600">
-                          Matched with {restaurantNames[acceptedResponse.restaurant_id] || "Restaurant"}. Proposed pickup: {acceptedResponse.proposed_pickup_window || row.pickup_window || "Not set"}
-                        </p>
-                      ) : null}
-                    </div>
-                  );
-                })
+                        {pendingResponses.length > 0 && (row.status === "open" || row.status === "responded") ? (
+                          <div className="mt-3 rounded border border-amber-200 bg-amber-50 p-3">
+                            <p className="mb-2 text-xs font-medium uppercase tracking-wide text-amber-700">Pending Restaurant Responses</p>
+                            <div className="space-y-2">
+                              {pendingResponses.map((response) => (
+                                <div key={response.id} className="flex items-center justify-between rounded border border-amber-200 bg-white px-3 py-2">
+                                  <div>
+                                    <p className="text-sm font-medium text-slate-900">{restaurantNames[response.restaurant_id] || "Restaurant"}</p>
+                                    <p className="text-xs text-slate-600">Proposed pickup: {response.proposed_pickup_window || "Not provided"}</p>
+                                    {response.response_note ? <p className="text-xs text-slate-500">{response.response_note}</p> : null}
+                                  </div>
+                                  <button className="rounded bg-emerald-800 px-3 py-1 text-xs text-white" onClick={() => void acceptResponse(row, response)}>Accept</button>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ) : null}
+
+                        {acceptedResponse && row.status === "matched" ? (
+                          <p className="mt-2 text-xs text-slate-600">
+                            Matched with {restaurantNames[acceptedResponse.restaurant_id] || "Restaurant"}. Proposed pickup: {acceptedResponse.proposed_pickup_window || row.pickup_window || "Not set"}
+                          </p>
+                        ) : null}
+                      </div>
+                    );
+                  })
+                )}
+              </section>
+            </div>
+          ) : activeTab === "notifications" ? (
+            <section className="rounded border border-slate-200 bg-white p-0">
+              {notifications.length === 0 ? (
+                <p className="px-4 py-6 text-sm text-slate-600">No notifications yet.</p>
+              ) : (
+                notifications.map((item) => (
+                  <div key={item.id} className="border-t border-slate-200 px-4 py-3 first:border-t-0">
+                    <p className="text-sm font-medium text-slate-900">{item.title}</p>
+                    <p className="text-sm text-slate-600">{item.message}</p>
+                    <p className="text-xs text-slate-500">{item.createdAt}</p>
+                  </div>
+                ))
               )}
             </section>
-          </div>
-        ) : activeTab === "notifications" ? (
-          <section className="rounded border border-slate-200 bg-white p-0">
-            {notifications.length === 0 ? (
-              <p className="px-4 py-6 text-sm text-slate-600">No notifications yet.</p>
-            ) : (
-              notifications.map((item) => (
-                <div key={item.id} className="border-t border-slate-200 px-4 py-3 first:border-t-0">
-                  <p className="text-sm font-medium text-slate-900">{item.title}</p>
-                  <p className="text-sm text-slate-600">{item.message}</p>
-                  <p className="text-xs text-slate-500">{item.createdAt}</p>
-                </div>
-              ))
-            )}
-          </section>
-        ) : (
-          <section className="rounded border border-slate-200 bg-white p-4 text-sm text-slate-700">
-            {profile ? (
-              <div className="space-y-2">
-                <p><span className="font-medium text-slate-900">Shelter:</span> {profile.name}</p>
-                <p><span className="font-medium text-slate-900">Email:</span> {profile.email}</p>
-                <p><span className="font-medium text-slate-900">Phone:</span> {profile.phone}</p>
-                <p><span className="font-medium text-slate-900">Address:</span> {profile.address}, {profile.city}, {profile.state} {profile.zip_code}</p>
-                {profile.organization_notes ? <p><span className="font-medium text-slate-900">Notes:</span> {profile.organization_notes}</p> : null}
+          ) : (
+            <section className="space-y-4">
+              <div className="flex gap-2">
+                <Button variant={activeSettingsTab === "account" ? "primary" : "secondary"} onClick={() => setActiveSettingsTab("account")}>Account</Button>
+                <Button variant={activeSettingsTab === "location" ? "primary" : "secondary"} onClick={() => setActiveSettingsTab("location")}>Location</Button>
+                <Button variant={activeSettingsTab === "security" ? "primary" : "secondary"} onClick={() => setActiveSettingsTab("security")}>Security</Button>
               </div>
-            ) : (
-              <p>Profile unavailable.</p>
-            )}
-          </section>
-        )}
-      </div>
+
+              <section className="rounded border border-slate-200 bg-white p-4 text-sm text-slate-700">
+                {loading ? (
+                  <p>Loading settings...</p>
+                ) : activeSettingsTab === "account" ? (
+                  <form className="grid grid-cols-1 gap-4 md:grid-cols-2" onSubmit={saveAccount}>
+                    <div>
+                      <label className="mb-1 block text-sm text-slate-700">Shelter name</label>
+                      <input className="h-10 w-full rounded border border-slate-300 px-3 text-sm" value={name} onChange={(e) => setName(e.target.value)} placeholder="Shelter display name" />
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-sm text-slate-700">Phone</label>
+                      <input className="h-10 w-full rounded border border-slate-300 px-3 text-sm" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="(555) 555-5555" />
+                    </div>
+                    <div className="md:col-span-2">
+                      <label className="mb-1 block text-sm text-slate-700">Email</label>
+                      <input className="h-10 w-full rounded border border-slate-300 px-3 text-sm" value={email} onChange={(e) => setEmail(e.target.value)} type="email" />
+                    </div>
+                    <div className="md:col-span-2">
+                      <button type="submit" className="h-10 rounded bg-emerald-800 px-4 text-sm font-medium text-white">Save account</button>
+                    </div>
+                  </form>
+                ) : activeSettingsTab === "location" ? (
+                  <form className="grid grid-cols-1 gap-4 md:grid-cols-2" onSubmit={saveLocation}>
+                    <div className="md:col-span-2">
+                      <label className="mb-1 block text-sm text-slate-700">Address</label>
+                      <input className="h-10 w-full rounded border border-slate-300 px-3 text-sm" value={address} onChange={(e) => setAddress(e.target.value)} placeholder="123 Main St" />
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-sm text-slate-700">City</label>
+                      <input className="h-10 w-full rounded border border-slate-300 px-3 text-sm" value={city} onChange={(e) => setCity(e.target.value)} placeholder="San Jose" />
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="mb-1 block text-sm text-slate-700">State</label>
+                        <input className="h-10 w-full rounded border border-slate-300 px-3 text-sm" value={state} onChange={(e) => setState(e.target.value)} maxLength={2} placeholder="CA" />
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-sm text-slate-700">ZIP</label>
+                        <input className="h-10 w-full rounded border border-slate-300 px-3 text-sm" value={zip} onChange={(e) => setZip(e.target.value)} maxLength={5} placeholder="95112" />
+                      </div>
+                    </div>
+                    <div className="md:col-span-2">
+                      <button type="submit" className="h-10 rounded bg-emerald-800 px-4 text-sm font-medium text-white">Save location</button>
+                    </div>
+                  </form>
+                ) : (
+                  <form className="grid grid-cols-1 gap-4 md:grid-cols-2" onSubmit={saveSecurity}>
+                    <div>
+                      <label className="mb-1 block text-sm text-slate-700">New password</label>
+                      <input
+                        className="h-10 w-full rounded border border-slate-300 px-3 text-sm"
+                        type="password"
+                        minLength={6}
+                        value={newPassword}
+                        onChange={(e) => setNewPassword(e.target.value)}
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-sm text-slate-700">Confirm password</label>
+                      <input
+                        className="h-10 w-full rounded border border-slate-300 px-3 text-sm"
+                        type="password"
+                        minLength={6}
+                        value={confirmPassword}
+                        onChange={(e) => setConfirmPassword(e.target.value)}
+                      />
+                    </div>
+                    <div className="md:col-span-2">
+                      <button type="submit" className="h-10 rounded bg-emerald-800 px-4 text-sm font-medium text-white">Update password</button>
+                    </div>
+                  </form>
+                )}
+              </section>
+            </section>
+          )}
+        </div>
+      </main>
     </div>
   );
 }

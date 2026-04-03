@@ -36,6 +36,12 @@ export default function RestaurantProfilePage() {
   const router = useRouter();
   const [profile, setProfile] = useState<RestaurantProfile>(EMPTY_PROFILE);
 
+  const handleSignOut = async () => {
+    const supabase = getSupabaseClient();
+    await supabase.auth.signOut();
+    router.replace("/");
+  };
+
   useEffect(() => {
     const loadProfile = async () => {
       const supabase = getSupabaseClient();
@@ -114,6 +120,8 @@ export default function RestaurantProfilePage() {
           { id: "profile", label: "Profile", icon: "👤", onClick: () => router.push("/restaurant/profile") },
           { id: "settings", label: "Settings", icon: "⚙️", onClick: () => router.push("/restaurant/settings") },
         ]}
+        footerLabel="Sign out"
+        onFooterClick={() => void handleSignOut()}
       />
 
       <main className="flex-1 px-6 py-6">

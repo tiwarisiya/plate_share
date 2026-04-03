@@ -1,12 +1,38 @@
 "use client";
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { Card, CardBody } from "@/components/ui/card";
+import { getSupabaseClient } from "@/lib/supabaseClient";
+import { getAuthenticatedUserDefaultRoute } from "@/lib/flow";
 
 export default function RestaurantEntry() {
   const router = useRouter();
+  const [checking, setChecking] = useState(true);
+
+  useEffect(() => {
+    const redirectIfAuthenticated = async () => {
+      const supabase = getSupabaseClient();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (user) {
+        const destination = await getAuthenticatedUserDefaultRoute(user.id, "restaurant");
+        router.replace(destination);
+        return;
+      }
+
+      setChecking(false);
+    };
+
+    void redirectIfAuthenticated();
+  }, [router]);
+
+  if (checking) {
+    return <div className="min-h-screen bg-slate-50 px-6 py-10 text-sm text-slate-600">Loading...</div>;
+  }
 
   return (
     <div className="min-h-screen bg-slate-50">

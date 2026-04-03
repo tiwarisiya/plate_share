@@ -3,6 +3,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { getSupabaseClient } from "@/lib/supabaseClient";
+import { getRoleGuardRedirect, getLoginPathForRole } from "@/lib/flow";
 
 type ChatMessage = {
   id: string;
@@ -32,7 +33,13 @@ export default function ShelterChatPage() {
     } = await supabase.auth.getUser();
 
     if (!user) {
-      router.push("/shelter/register");
+      router.push(getLoginPathForRole("shelter"));
+      return;
+    }
+
+    const roleRedirect = await getRoleGuardRedirect("shelter", user.id);
+    if (roleRedirect) {
+      router.push(roleRedirect);
       return;
     }
 

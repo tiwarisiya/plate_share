@@ -9,6 +9,8 @@ import {
   mapShelterStatusForUi,
   ShelterRequestStatus,
 } from "@/lib/flow";
+import { Sidebar } from "@/components/ui/sidebar";
+import { Button } from "@/components/ui/button";
 
 type Tab = "open" | "responses" | "matched";
 
@@ -148,109 +150,121 @@ export default function RestaurantHome() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 p-6">
-      <div className="mx-auto max-w-7xl">
-        <div className="mb-4 flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-semibold text-slate-900">Restaurant Request Queue</h1>
-            <p className="text-sm text-slate-600">Browse open shelter requests and manage your response pipeline.</p>
-          </div>
-          <div className="flex gap-2">
-            <button className={`rounded border px-3 py-2 text-sm ${activeTab === "open" ? "bg-white" : "bg-transparent"}`} onClick={() => setActiveTab("open")}>Open Requests</button>
-            <button className={`rounded border px-3 py-2 text-sm ${activeTab === "responses" ? "bg-white" : "bg-transparent"}`} onClick={() => setActiveTab("responses")}>My Responses</button>
-            <button className={`rounded border px-3 py-2 text-sm ${activeTab === "matched" ? "bg-white" : "bg-transparent"}`} onClick={() => setActiveTab("matched")}>Matched</button>
-            <button className="rounded border px-3 py-2 text-sm" onClick={() => router.push("/restaurant/profile")}>Profile</button>
-            <button className="rounded border px-3 py-2 text-sm" onClick={() => router.push("/restaurant/settings")}>Settings</button>
-            <button className="rounded border px-3 py-2 text-sm" onClick={() => void handleSignOut()}>Sign out</button>
-          </div>
-        </div>
+    <div className="flex min-h-screen bg-slate-50">
+      <Sidebar
+        title="Plate Share"
+        subtitle="Restaurant Operations"
+        activeId="home"
+        items={[
+          { id: "home", label: "Requests", icon: "📋", onClick: () => router.push("/restaurant/home") },
+          { id: "profile", label: "Profile", icon: "👤", onClick: () => router.push("/restaurant/profile") },
+          { id: "settings", label: "Settings", icon: "⚙️", onClick: () => router.push("/restaurant/settings") },
+        ]}
+        footerLabel="Sign out"
+        onFooterClick={() => void handleSignOut()}
+      />
 
-        {statusMsg ? <p className="mb-4 text-sm text-slate-700">{statusMsg}</p> : null}
+      <main className="flex-1 px-6 py-6">
+        <div className="mx-auto max-w-7xl">
+          <div className="mb-4 flex items-center justify-between">
+            <div>
+              <h1 className="text-2xl font-semibold text-slate-900">Restaurant Request Queue</h1>
+              <p className="text-sm text-slate-600">Browse open shelter requests and manage your response pipeline.</p>
+            </div>
+            <div className="flex gap-2">
+              <Button variant={activeTab === "open" ? "primary" : "secondary"} onClick={() => setActiveTab("open")}>Open Requests</Button>
+              <Button variant={activeTab === "responses" ? "primary" : "secondary"} onClick={() => setActiveTab("responses")}>My Responses</Button>
+              <Button variant={activeTab === "matched" ? "primary" : "secondary"} onClick={() => setActiveTab("matched")}>Matched</Button>
+            </div>
+          </div>
 
-        <section className="rounded border border-slate-200 bg-white p-0">
-          {loading ? (
-            <p className="px-4 py-6 text-sm text-slate-600">Loading requests...</p>
-          ) : activeTab === "open" ? (
-            openRequests.length === 0 ? (
-              <p className="px-4 py-6 text-sm text-slate-600">No open requests available right now.</p>
-            ) : (
-              <>
-                <div className="grid grid-cols-12 gap-2 border-b border-slate-200 px-4 py-3 text-xs uppercase text-slate-500">
-                  <p className="col-span-3">Request</p>
-                  <p className="col-span-2">Servings</p>
-                  <p className="col-span-2">Food Type</p>
-                  <p className="col-span-2">Pickup</p>
-                  <p className="col-span-1">Urgency</p>
-                  <p className="col-span-2 text-right">Action</p>
-                </div>
-                {openRequests.map((row) => (
-                  <div key={row.id} className="grid grid-cols-12 gap-2 border-t border-slate-200 px-4 py-3 text-sm">
-                    <div className="col-span-3">
-                      <p className="font-medium text-slate-900">{row.title}</p>
-                      <p className="text-xs text-slate-500">{row.city || "City"}, {row.state || "ST"}</p>
+          {statusMsg ? <p className="mb-4 text-sm text-slate-700">{statusMsg}</p> : null}
+
+          <section className="rounded border border-slate-200 bg-white p-0">
+            {loading ? (
+              <p className="px-4 py-6 text-sm text-slate-600">Loading requests...</p>
+            ) : activeTab === "open" ? (
+              openRequests.length === 0 ? (
+                <p className="px-4 py-6 text-sm text-slate-600">No open requests available right now.</p>
+              ) : (
+                <>
+                  <div className="grid grid-cols-12 gap-2 border-b border-slate-200 px-4 py-3 text-xs uppercase text-slate-500">
+                    <p className="col-span-3">Request</p>
+                    <p className="col-span-2">Servings</p>
+                    <p className="col-span-2">Food Type</p>
+                    <p className="col-span-2">Pickup</p>
+                    <p className="col-span-1">Urgency</p>
+                    <p className="col-span-2 text-right">Action</p>
+                  </div>
+                  {openRequests.map((row) => (
+                    <div key={row.id} className="grid grid-cols-12 gap-2 border-t border-slate-200 px-4 py-3 text-sm">
+                      <div className="col-span-3">
+                        <p className="font-medium text-slate-900">{row.title}</p>
+                        <p className="text-xs text-slate-500">{row.city || "City"}, {row.state || "ST"}</p>
+                      </div>
+                      <p className="col-span-2 text-slate-700">{row.quantity || "-"}</p>
+                      <p className="col-span-2 text-slate-700">{row.food_needed || "Not specified"}</p>
+                      <p className="col-span-2 text-slate-700">{row.pickup_window || "Not set"}</p>
+                      <p className="col-span-1 capitalize text-slate-700">{row.urgency}</p>
+                      <div className="col-span-2 text-right">
+                        <button className="rounded border px-3 py-1 text-xs" onClick={() => router.push(`/restaurant/donation/${row.id}`)}>
+                          View
+                        </button>
+                      </div>
                     </div>
-                    <p className="col-span-2 text-slate-700">{row.quantity || "-"}</p>
-                    <p className="col-span-2 text-slate-700">{row.food_needed || "Not specified"}</p>
-                    <p className="col-span-2 text-slate-700">{row.pickup_window || "Not set"}</p>
-                    <p className="col-span-1 capitalize text-slate-700">{row.urgency}</p>
-                    <div className="col-span-2 text-right">
-                      <button className="rounded border px-3 py-1 text-xs" onClick={() => router.push(`/restaurant/donation/${row.id}`)}>
-                        View
+                  ))}
+                </>
+              )
+            ) : activeTab === "responses" ? (
+              responses.length === 0 ? (
+                <p className="px-4 py-6 text-sm text-slate-600">You have not responded to any requests yet.</p>
+              ) : (
+                responses.map((row) => (
+                  <div key={row.id} className="border-t border-slate-200 px-4 py-3 text-sm first:border-t-0">
+                    {(() => {
+                      const requestSummary = requestSummariesById[row.request_id];
+                      const requestAvailable = Boolean(requestSummary);
+
+                      return (
+                        <>
+                    <div className="flex items-center justify-between">
+                      <p className="font-medium text-slate-900">{requestSummary?.title || `Request ${row.request_id.slice(0, 8)}`}</p>
+                      <p className="capitalize text-slate-700">{row.status}</p>
+                    </div>
+                    {requestSummary ? <p className="text-xs text-slate-500">Current request status: {mapShelterStatusForUi(requestSummary.status)}</p> : null}
+                    <p className="text-slate-600">Proposed pickup: {row.proposed_pickup_window || "Not provided"}</p>
+                    {requestAvailable ? (
+                      <button className="mt-2 rounded border px-3 py-1 text-xs" onClick={() => router.push(`/restaurant/donation/${row.request_id}`)}>
+                        Open Request
                       </button>
-                    </div>
+                    ) : (
+                      <p className="mt-2 text-xs text-slate-500">This request is no longer accessible.</p>
+                    )}
+                        </>
+                      );
+                    })()}
                   </div>
-                ))}
-              </>
-            )
-          ) : activeTab === "responses" ? (
-            responses.length === 0 ? (
-              <p className="px-4 py-6 text-sm text-slate-600">You have not responded to any requests yet.</p>
+                ))
+              )
+            ) : matchedRequests.length === 0 ? (
+              <p className="px-4 py-6 text-sm text-slate-600">No matched requests yet.</p>
             ) : (
-              responses.map((row) => (
+              matchedRequests.map((row) => (
                 <div key={row.id} className="border-t border-slate-200 px-4 py-3 text-sm first:border-t-0">
-                  {(() => {
-                    const requestSummary = requestSummariesById[row.request_id];
-                    const requestAvailable = Boolean(requestSummary);
-
-                    return (
-                      <>
                   <div className="flex items-center justify-between">
-                    <p className="font-medium text-slate-900">{requestSummary?.title || `Request ${row.request_id.slice(0, 8)}`}</p>
-                    <p className="capitalize text-slate-700">{row.status}</p>
+                    <p className="font-medium text-slate-900">{row.title}</p>
+                    <p className="text-slate-700">{mapShelterStatusForUi(row.status)}</p>
                   </div>
-                  {requestSummary ? <p className="text-xs text-slate-500">Current request status: {mapShelterStatusForUi(requestSummary.status)}</p> : null}
-                  <p className="text-slate-600">Proposed pickup: {row.proposed_pickup_window || "Not provided"}</p>
-                  {requestAvailable ? (
-                    <button className="mt-2 rounded border px-3 py-1 text-xs" onClick={() => router.push(`/restaurant/donation/${row.request_id}`)}>
-                      Open Request
-                    </button>
-                  ) : (
-                    <p className="mt-2 text-xs text-slate-500">This request is no longer accessible.</p>
-                  )}
-                      </>
-                    );
-                  })()}
+                  <p className="text-slate-600">Pickup window: {row.pickup_window || "Not set"}</p>
+                  <button className="mt-2 rounded border px-3 py-1 text-xs" onClick={() => router.push(`/restaurant/donation/${row.id}`)}>
+                    View Coordination Details
+                  </button>
                 </div>
               ))
-            )
-          ) : matchedRequests.length === 0 ? (
-            <p className="px-4 py-6 text-sm text-slate-600">No matched requests yet.</p>
-          ) : (
-            matchedRequests.map((row) => (
-              <div key={row.id} className="border-t border-slate-200 px-4 py-3 text-sm first:border-t-0">
-                <div className="flex items-center justify-between">
-                  <p className="font-medium text-slate-900">{row.title}</p>
-                  <p className="text-slate-700">{mapShelterStatusForUi(row.status)}</p>
-                </div>
-                <p className="text-slate-600">Pickup window: {row.pickup_window || "Not set"}</p>
-                <button className="mt-2 rounded border px-3 py-1 text-xs" onClick={() => router.push(`/restaurant/donation/${row.id}`)}>
-                  View Coordination Details
-                </button>
-              </div>
-            ))
-          )}
-        </section>
-      </div>
+            )}
+          </section>
+        </div>
+      </main>
     </div>
   );
 }

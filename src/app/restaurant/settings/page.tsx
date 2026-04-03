@@ -102,6 +102,12 @@ export default function RestaurantSettingsPage() {
     [router]
   );
 
+  const handleSignOut = async () => {
+    const supabase = getSupabaseClient();
+    await supabase.auth.signOut();
+    router.replace("/");
+  };
+
   const saveAccount = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!userId) return;
@@ -153,7 +159,14 @@ export default function RestaurantSettingsPage() {
 
   return (
     <div className="flex min-h-screen bg-slate-50">
-      <Sidebar title="Plate Share" subtitle="Restaurant Operations" items={navItems} activeId="settings" />
+      <Sidebar
+        title="Plate Share"
+        subtitle="Restaurant Operations"
+        items={navItems}
+        activeId="settings"
+        footerLabel="Sign out"
+        onFooterClick={() => void handleSignOut()}
+      />
 
       <main className="flex-1 px-6 py-6">
         <div className="mx-auto max-w-4xl">

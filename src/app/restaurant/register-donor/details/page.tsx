@@ -7,6 +7,7 @@ import {
   getCurrentUserRole,
   getDashboardPathForRole,
   getProfileDetailsPathForRole,
+  isRestaurantProfileComplete,
   isShelterProfileComplete,
 } from "@/lib/flow";
 import { Button } from "@/components/ui/button";
@@ -61,6 +62,14 @@ export default function RegisterDonorDetailsPage() {
             isComplete ? getDashboardPathForRole("shelter") : getProfileDetailsPathForRole("shelter")
           );
           return;
+        }
+
+        if (existingRole === "restaurant") {
+          const isComplete = await isRestaurantProfileComplete(data.session.user.id);
+          if (isComplete) {
+            router.replace(getDashboardPathForRole("restaurant"));
+            return;
+          }
         }
 
         setSessionUserId(data.session.user.id);

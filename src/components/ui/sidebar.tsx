@@ -32,7 +32,7 @@ export function Sidebar({ title, subtitle, items, activeId, footerLabel, onFoote
             onClick={item.onClick}
             className={`flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm transition ${
               activeId === item.id
-                ? "bg-emerald-50 text-emerald-900"
+                ? "bg-emerald-100 text-emerald-950 ring-1 ring-emerald-200"
                 : "text-slate-700 hover:bg-slate-100"
             }`}
           >
