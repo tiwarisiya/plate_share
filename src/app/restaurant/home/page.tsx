@@ -12,10 +12,13 @@ import {
 import { Sidebar } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 
-type Tab = "open" | "responses" | "matched";
+type Tab = "open" | "matched" | "completed";
+type ScreenTab = "requests" | "notifications";
+type RequestTab = "open" | "matched" | "completed";
 
 type RequestRow = {
   id: string;
+  shelter_id: string;
   title: string;
   quantity: number | null;
   food_needed: string | null;
@@ -45,20 +48,49 @@ type RequestSummary = {
   status: ShelterRequestStatus;
 };
 
+type ChatInboxItem = {
+  requestId: string;
+  partnerName: string;
+  requestTitle: string;
+  lastSenderRole: "restaurant" | "shelter" | null;
+  preview: string;
+  createdAt: string;
+  timestamp: string;
+  sortAt: number;
+};
+
+type NotificationItem = {
+  id: string;
+  title: string;
+  message: string;
+  createdAt: string;
+  sortAt: number;
+};
+
+type ShelterSummary = {
+  id: string;
+  name: string | null;
+};
+
 export default function RestaurantHome() {
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState<Tab>("open");
+  const [activeTab, setActiveTab] = useState<ScreenTab>("requests");
+  const [requestTab, setRequestTab] = useState<RequestTab>("open");
   const [loading, setLoading] = useState(true);
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
-  const [userId, setUserId] = useState<string | null>(null);
   const [openRequests, setOpenRequests] = useState<RequestRow[]>([]);
-  const [responses, setResponses] = useState<ResponseRow[]>([]);
   const [matchedRequests, setMatchedRequests] = useState<RequestRow[]>([]);
+  const [completedRequests, setCompletedRequests] = useState<RequestRow[]>([]);
   const [requestSummariesById, setRequestSummariesById] = useState<Record<string, RequestSummary>>({});
+  const [shelterNamesById, setShelterNamesById] = useState<Record<string, string>>({});
+  const [myResponseByRequestId, setMyResponseByRequestId] = useState<Record<string, ResponseRow>>({});
+  const [chatInboxItems, setChatInboxItems] = useState<ChatInboxItem[]>([]);
 
-  const loadDashboard = async () => {
-    setLoading(true);
-    setStatusMsg(null);
+  const loadDashboard = async (silent = false) => {
+    if (!silent) {
+      setLoading(true);
+      setStatusMsg(null);
+    }
 
     const supabase = getSupabaseClient();
     const {
@@ -82,23 +114,43 @@ export default function RestaurantHome() {
       return;
     }
 
-    setUserId(user.id);
-
-    const [{ data: requestRows }, { data: myResponses }] = await Promise.all([
+    const [{ data: requestRows, error: requestError }, { data: myResponses, error: responsesError }, { data: myDonations, error: donationsError }] = await Promise.all([
       supabase
         .from("shelter_requests")
-        .select("id, title, quantity, food_needed, pickup_window, urgency, notes, city, state, status, created_at, matched_donation_id")
-        .in("status", ["open", "responded", "matched", "fulfilled", "cancelled"])
+        .select("id, shelter_id, title, quantity, food_needed, pickup_window, urgency, notes, city, state, status, created_at, matched_donation_id")
+        .in("status", ["open", "responded", "matched", "completed", "fulfilled", "cancelled"])
         .order("created_at", { ascending: false }),
       supabase
         .from("request_responses")
         .select("id, request_id, restaurant_id, donation_id, proposed_pickup_window, status, created_at")
         .eq("restaurant_id", user.id)
         .order("created_at", { ascending: false }),
+      supabase.from("donations").select("id").eq("restaurant_id", user.id),
     ]);
+
+    if (requestError || responsesError || donationsError) {
+      setStatusMsg(`Failed to load dashboard: ${(requestError || responsesError || donationsError)?.message || "Unknown error"}`);
+      setOpenRequests([]);
+      setMatchedRequests([]);
+      setCompletedRequests([]);
+      setChatInboxItems([]);
+      setMyResponseByRequestId({});
+      setRequestSummariesById({});
+      setShelterNamesById({});
+      if (!silent) setLoading(false);
+      return;
+    }
 
     const parsedRequests = (requestRows || []) as RequestRow[];
     const parsedResponses = (myResponses || []) as ResponseRow[];
+
+    const responseByRequest: Record<string, ResponseRow> = {};
+    parsedResponses.forEach((row) => {
+      if (!responseByRequest[row.request_id]) {
+        responseByRequest[row.request_id] = row;
+      }
+    });
+    setMyResponseByRequestId(responseByRequest);
 
     const summaries: Record<string, RequestSummary> = {};
     parsedRequests.forEach((row) => {
@@ -106,13 +158,22 @@ export default function RestaurantHome() {
     });
     setRequestSummariesById(summaries);
 
-    const responseRequestIds = new Set(parsedResponses.map((row) => row.request_id));
+    let shelterNames: Record<string, string> = {};
+    const shelterIds = Array.from(new Set(parsedRequests.map((row) => row.shelter_id)));
+    if (shelterIds.length > 0) {
+      const { data: shelterProfiles } = await supabase
+        .from("profiles")
+        .select("id, name")
+        .in("id", shelterIds);
 
-    const openQueue = parsedRequests.filter((row) => {
-      if (row.status !== "open" && row.status !== "responded") return false;
-      const myResponse = parsedResponses.find((resp) => resp.request_id === row.id);
-      return !myResponse || myResponse.status === "rejected" || myResponse.status === "cancelled";
-    });
+      (shelterProfiles || []).forEach((row: ShelterSummary) => {
+        const shelter = row as ShelterSummary;
+        shelterNames[shelter.id] = shelter.name || "Shelter";
+      });
+    }
+    setShelterNamesById(shelterNames);
+
+    const openQueue = parsedRequests.filter((row) => row.status === "open" || row.status === "responded");
 
     const matchedRequestIds = new Set(
       parsedResponses
@@ -120,28 +181,183 @@ export default function RestaurantHome() {
         .map((resp) => resp.request_id)
     );
 
-    const matched = parsedRequests.filter((row) => matchedRequestIds.has(row.id));
+    const myDonationIds = new Set((myDonations || []).map((row: { id: string }) => row.id));
+
+    const matched = parsedRequests.filter(
+      (row) =>
+        (matchedRequestIds.has(row.id) ||
+          (Boolean(row.matched_donation_id) && myDonationIds.has(row.matched_donation_id as string))) &&
+        row.status === "matched"
+    );
+
+    const completed = parsedRequests.filter(
+      (row) =>
+        (matchedRequestIds.has(row.id) ||
+          (Boolean(row.matched_donation_id) && myDonationIds.has(row.matched_donation_id as string))) &&
+        (row.status === "completed" || row.status === "fulfilled" || row.status === "cancelled")
+    );
 
     setOpenRequests(openQueue);
-    setResponses(parsedResponses);
     setMatchedRequests(matched);
+    setCompletedRequests(completed);
 
-    setLoading(false);
+    if (matched.length === 0) {
+      setChatInboxItems([]);
+    } else {
+      const matchedChatRequestIds = matched.map((row) => row.id);
+      const { data: chatRows } = await supabase
+        .from("chat_messages")
+        .select("request_id, sender_role, message, created_at")
+        .in("request_id", matchedChatRequestIds)
+        .order("created_at", { ascending: false });
+
+      const latestByRequestId: Record<string, { sender_role: "restaurant" | "shelter"; message: string; created_at: string }> = {};
+      (chatRows || []).forEach((row: { request_id: string; sender_role: "restaurant" | "shelter"; message: string; created_at: string }) => {
+        if (!latestByRequestId[row.request_id]) {
+          latestByRequestId[row.request_id] = {
+            sender_role: row.sender_role,
+            message: row.message,
+            created_at: row.created_at,
+          };
+        }
+      });
+
+      const inbox = matched
+        .map((row) => {
+          const latest = latestByRequestId[row.id];
+          const fallbackTime = new Date(row.created_at).getTime();
+          const latestTime = latest ? new Date(latest.created_at).getTime() : fallbackTime;
+          const partnerName = shelterNames[row.shelter_id] || "Shelter";
+          const senderPrefix = latest ? (latest.sender_role === "restaurant" ? "You" : partnerName) : "No messages";
+
+          return {
+            requestId: row.id,
+            partnerName,
+            requestTitle: row.title,
+            lastSenderRole: latest ? latest.sender_role : null,
+            preview: latest ? `${senderPrefix}: ${latest.message}` : "No messages yet. Open chat to start coordination.",
+            createdAt: latest ? latest.created_at : row.created_at,
+            timestamp: new Date(latest ? latest.created_at : row.created_at).toLocaleString(),
+            sortAt: latestTime,
+          };
+        })
+        .sort((a, b) => b.sortAt - a.sortAt);
+
+      setChatInboxItems(inbox);
+    }
+
+    if (!silent) setLoading(false);
   };
 
   useEffect(() => {
     void loadDashboard();
+
+    const timer = setInterval(() => {
+      void loadDashboard(true);
+    }, 15000);
+
+    return () => clearInterval(timer);
   }, []);
 
-  const responseByRequest = useMemo(() => {
-    const map: Record<string, ResponseRow> = {};
-    responses.forEach((row) => {
-      if (!map[row.request_id]) {
-        map[row.request_id] = row;
+  useEffect(() => {
+    const supabase = getSupabaseClient();
+    const channel = supabase
+      .channel("restaurant-home-realtime")
+      .on("postgres_changes", { event: "*", schema: "public", table: "chat_messages" }, () => {
+        void loadDashboard(true);
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "shelter_requests" }, () => {
+        void loadDashboard(true);
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "request_responses" }, () => {
+        void loadDashboard(true);
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "donations" }, () => {
+        void loadDashboard(true);
+      })
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, []);
+
+  const getRespondAction = (row: RequestRow): { canRespond: boolean; label: string } => {
+    const myResponse = myResponseByRequestId[row.id];
+
+    if (row.status === "matched" || row.status === "completed" || row.status === "fulfilled" || row.status === "cancelled") {
+      return { canRespond: false, label: "Request unavailable" };
+    }
+
+    if (!myResponse) {
+      return { canRespond: true, label: "Respond" };
+    }
+
+    if (myResponse.status === "rejected" || myResponse.status === "cancelled") {
+      return { canRespond: true, label: "Respond Again" };
+    }
+
+    if (myResponse.status === "pending") {
+      return { canRespond: false, label: "Awaiting shelter decision" };
+    }
+
+    if (myResponse.status === "accepted") {
+      return { canRespond: false, label: "Response accepted" };
+    }
+
+    return { canRespond: false, label: "Request unavailable" };
+  };
+
+  const notifications = useMemo(() => {
+    const items: NotificationItem[] = [];
+
+    matchedRequests.forEach((row) => {
+      const shelterName = shelterNamesById[row.shelter_id] || "Shelter";
+      const ts = new Date(row.created_at).getTime();
+      items.push({
+        id: `matched-${row.id}`,
+        title: "Request matched",
+        message: `${row.title} is now matched with ${shelterName}.`,
+        createdAt: new Date(row.created_at).toLocaleString(),
+        sortAt: ts,
+      });
+
+      if (row.pickup_window) {
+        items.push({
+          id: `reminder-${row.id}`,
+          title: "Delivery reminder",
+          message: `${row.title} pickup window: ${row.pickup_window}.`,
+          createdAt: new Date(row.created_at).toLocaleString(),
+          sortAt: ts - 1,
+        });
       }
     });
-    return map;
-  }, [responses]);
+
+    completedRequests.forEach((row) => {
+      const ts = new Date(row.created_at).getTime();
+      items.push({
+        id: `completed-${row.id}`,
+        title: "Request closed",
+        message: `${row.title} has moved to ${mapShelterStatusForUi(row.status)}.`,
+        createdAt: new Date(row.created_at).toLocaleString(),
+        sortAt: ts,
+      });
+    });
+
+    chatInboxItems
+      .filter((item) => item.lastSenderRole === "shelter")
+      .forEach((item) => {
+        items.push({
+          id: `chat-${item.requestId}`,
+          title: "New chat message",
+          message: `${item.partnerName} sent a new message in ${item.requestTitle}.`,
+          createdAt: new Date(item.createdAt).toLocaleString(),
+          sortAt: new Date(item.createdAt).getTime(),
+        });
+      });
+
+    return items.sort((a, b) => b.sortAt - a.sortAt);
+  }, [matchedRequests, completedRequests, chatInboxItems, shelterNamesById]);
 
   const handleSignOut = async () => {
     const supabase = getSupabaseClient();
@@ -154,9 +370,20 @@ export default function RestaurantHome() {
       <Sidebar
         title="Plate Share"
         subtitle="Restaurant Operations"
-        activeId="home"
+        activeId={activeTab}
+        inboxAnchorId="requests"
+        inboxLabel="Chats"
+        inboxItems={chatInboxItems.map((item) => ({
+          id: item.requestId,
+          label: item.partnerName,
+          preview: item.preview,
+          timestamp: item.timestamp,
+          onClick: () => router.push(`/restaurant/chat/${item.requestId}`),
+        }))}
+        inboxEmptyLabel="No active matched chats"
         items={[
-          { id: "home", label: "Requests", icon: "📋", onClick: () => router.push("/restaurant/home") },
+          { id: "requests", label: "Requests", icon: "📋", onClick: () => setActiveTab("requests") },
+          { id: "notifications", label: "Notifications", icon: "🔔", onClick: () => setActiveTab("notifications"), count: notifications.length },
           { id: "profile", label: "Profile", icon: "👤", onClick: () => router.push("/restaurant/profile") },
           { id: "settings", label: "Settings", icon: "⚙️", onClick: () => router.push("/restaurant/settings") },
         ]}
@@ -168,101 +395,137 @@ export default function RestaurantHome() {
         <div className="mx-auto max-w-7xl">
           <div className="mb-4 flex items-center justify-between">
             <div>
-              <h1 className="text-2xl font-semibold text-slate-900">Restaurant Request Queue</h1>
-              <p className="text-sm text-slate-600">Browse open shelter requests and manage your response pipeline.</p>
+              <h1 className="text-2xl font-semibold text-slate-900">{activeTab === "requests" ? "Restaurant Request Queue" : "Notifications"}</h1>
+              <p className="text-sm text-slate-600">
+                {activeTab === "requests"
+                  ? "Browse open shelter requests and manage your response pipeline."
+                  : "Track matching updates, reminders, and incoming chat activity."}
+              </p>
             </div>
-            <div className="flex gap-2">
-              <Button variant={activeTab === "open" ? "primary" : "secondary"} onClick={() => setActiveTab("open")}>Open Requests</Button>
-              <Button variant={activeTab === "responses" ? "primary" : "secondary"} onClick={() => setActiveTab("responses")}>My Responses</Button>
-              <Button variant={activeTab === "matched" ? "primary" : "secondary"} onClick={() => setActiveTab("matched")}>Matched</Button>
-            </div>
+            {activeTab === "requests" ? (
+              <div className="flex gap-2">
+                <Button variant={requestTab === "open" ? "primary" : "secondary"} onClick={() => setRequestTab("open")}>Open Requests</Button>
+                <Button variant={requestTab === "matched" ? "primary" : "secondary"} onClick={() => setRequestTab("matched")}>Matched</Button>
+                <Button variant={requestTab === "completed" ? "primary" : "secondary"} onClick={() => setRequestTab("completed")}>Completed</Button>
+              </div>
+            ) : null}
           </div>
 
           {statusMsg ? <p className="mb-4 text-sm text-slate-700">{statusMsg}</p> : null}
 
+          {activeTab === "requests" ? (
           <section className="rounded border border-slate-200 bg-white p-0">
             {loading ? (
               <p className="px-4 py-6 text-sm text-slate-600">Loading requests...</p>
-            ) : activeTab === "open" ? (
+            ) : requestTab === "open" ? (
               openRequests.length === 0 ? (
                 <p className="px-4 py-6 text-sm text-slate-600">No open requests available right now.</p>
               ) : (
                 <>
                   <div className="grid grid-cols-12 gap-2 border-b border-slate-200 px-4 py-3 text-xs uppercase text-slate-500">
                     <p className="col-span-3">Request</p>
+                    <p className="col-span-2">Shelter</p>
                     <p className="col-span-2">Servings</p>
                     <p className="col-span-2">Food Type</p>
                     <p className="col-span-2">Pickup</p>
                     <p className="col-span-1">Urgency</p>
-                    <p className="col-span-2 text-right">Action</p>
+                    <p className="col-span-12 text-[10px] text-slate-400">Includes open and responded requests, even if you already submitted a pending response.</p>
                   </div>
                   {openRequests.map((row) => (
-                    <div key={row.id} className="grid grid-cols-12 gap-2 border-t border-slate-200 px-4 py-3 text-sm">
+                    <div key={row.id} className="border-t border-slate-200 px-4 py-3 text-sm">
+                      {(() => {
+                        const respondAction = getRespondAction(row);
+                        return (
+                          <>
+                      <div className="grid grid-cols-12 gap-2">
                       <div className="col-span-3">
                         <p className="font-medium text-slate-900">{row.title}</p>
                         <p className="text-xs text-slate-500">{row.city || "City"}, {row.state || "ST"}</p>
                       </div>
+                      <p className="col-span-2 text-slate-700">{shelterNamesById[row.shelter_id] || "Shelter"}</p>
                       <p className="col-span-2 text-slate-700">{row.quantity || "-"}</p>
                       <p className="col-span-2 text-slate-700">{row.food_needed || "Not specified"}</p>
                       <p className="col-span-2 text-slate-700">{row.pickup_window || "Not set"}</p>
                       <p className="col-span-1 capitalize text-slate-700">{row.urgency}</p>
-                      <div className="col-span-2 text-right">
-                        <button className="rounded border px-3 py-1 text-xs" onClick={() => router.push(`/restaurant/donation/${row.id}`)}>
-                          View
-                        </button>
                       </div>
+                      <div className="mt-2 flex items-center justify-between gap-2">
+                        <div className="text-xs text-slate-600">
+                          <p>Status: {mapShelterStatusForUi(row.status)}</p>
+                          <p>Notes: {row.notes ? `${row.notes.slice(0, 100)}${row.notes.length > 100 ? "..." : ""}` : "No notes"}</p>
+                        </div>
+                        <div className="flex gap-2">
+                          <button className="rounded border px-3 py-1 text-xs" onClick={() => router.push(`/restaurant/donation/${row.id}`)}>
+                            View Details
+                          </button>
+                          {respondAction.canRespond ? (
+                            <button className="rounded bg-emerald-800 px-3 py-1 text-xs text-white" onClick={() => router.push(`/restaurant/donation/${row.id}/confirm`)}>
+                              {respondAction.label}
+                            </button>
+                          ) : (
+                            <button className="cursor-not-allowed rounded border px-3 py-1 text-xs text-slate-500" disabled>
+                              {respondAction.label}
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                          </>
+                        );
+                      })()}
                     </div>
                   ))}
                 </>
               )
-            ) : activeTab === "responses" ? (
-              responses.length === 0 ? (
-                <p className="px-4 py-6 text-sm text-slate-600">You have not responded to any requests yet.</p>
-              ) : (
-                responses.map((row) => (
-                  <div key={row.id} className="border-t border-slate-200 px-4 py-3 text-sm first:border-t-0">
-                    {(() => {
-                      const requestSummary = requestSummariesById[row.request_id];
-                      const requestAvailable = Boolean(requestSummary);
-
-                      return (
-                        <>
-                    <div className="flex items-center justify-between">
-                      <p className="font-medium text-slate-900">{requestSummary?.title || `Request ${row.request_id.slice(0, 8)}`}</p>
-                      <p className="capitalize text-slate-700">{row.status}</p>
-                    </div>
-                    {requestSummary ? <p className="text-xs text-slate-500">Current request status: {mapShelterStatusForUi(requestSummary.status)}</p> : null}
-                    <p className="text-slate-600">Proposed pickup: {row.proposed_pickup_window || "Not provided"}</p>
-                    {requestAvailable ? (
-                      <button className="mt-2 rounded border px-3 py-1 text-xs" onClick={() => router.push(`/restaurant/donation/${row.request_id}`)}>
-                        Open Request
+            ) : (
+              requestTab === "matched" ? (
+                matchedRequests.length === 0 ? (
+                  <p className="px-4 py-6 text-sm text-slate-600">No matched requests yet.</p>
+                ) : (
+                  matchedRequests.map((row) => (
+                    <div key={row.id} className="border-t border-slate-200 px-4 py-3 text-sm first:border-t-0">
+                      <div className="flex items-center justify-between">
+                        <p className="font-medium text-slate-900">{row.title}</p>
+                        <p className="text-slate-700">{mapShelterStatusForUi(row.status)}</p>
+                      </div>
+                      <p className="text-slate-600">Pickup window: {row.pickup_window || "Not set"}</p>
+                      <button className="mt-2 rounded border px-3 py-1 text-xs" onClick={() => router.push(`/restaurant/donation/${row.id}`)}>
+                        View Coordination Details
                       </button>
-                    ) : (
-                      <p className="mt-2 text-xs text-slate-500">This request is no longer accessible.</p>
-                    )}
-                        </>
-                      );
-                    })()}
+                    </div>
+                  ))
+                )
+              ) : completedRequests.length === 0 ? (
+                <p className="px-4 py-6 text-sm text-slate-600">No completed or closed matched requests yet.</p>
+              ) : (
+                completedRequests.map((row) => (
+                  <div key={row.id} className="border-t border-slate-200 px-4 py-3 text-sm first:border-t-0">
+                    <div className="flex items-center justify-between">
+                      <p className="font-medium text-slate-900">{row.title}</p>
+                      <p className="text-slate-700">{mapShelterStatusForUi(row.status)}</p>
+                    </div>
+                    <p className="text-slate-600">Pickup window: {row.pickup_window || "Not set"}</p>
+                    <button className="mt-2 rounded border px-3 py-1 text-xs" onClick={() => router.push(`/restaurant/donation/${row.id}`)}>
+                      View Details
+                    </button>
                   </div>
                 ))
               )
-            ) : matchedRequests.length === 0 ? (
-              <p className="px-4 py-6 text-sm text-slate-600">No matched requests yet.</p>
-            ) : (
-              matchedRequests.map((row) => (
-                <div key={row.id} className="border-t border-slate-200 px-4 py-3 text-sm first:border-t-0">
-                  <div className="flex items-center justify-between">
-                    <p className="font-medium text-slate-900">{row.title}</p>
-                    <p className="text-slate-700">{mapShelterStatusForUi(row.status)}</p>
-                  </div>
-                  <p className="text-slate-600">Pickup window: {row.pickup_window || "Not set"}</p>
-                  <button className="mt-2 rounded border px-3 py-1 text-xs" onClick={() => router.push(`/restaurant/donation/${row.id}`)}>
-                    View Coordination Details
-                  </button>
-                </div>
-              ))
             )}
           </section>
+          ) : (
+            <section className="rounded border border-slate-200 bg-white p-0">
+              {notifications.length === 0 ? (
+                <p className="px-4 py-6 text-sm text-slate-600">No notifications yet.</p>
+              ) : (
+                notifications.map((item) => (
+                  <div key={item.id} className="border-t border-slate-200 px-4 py-3 first:border-t-0">
+                    <p className="text-sm font-medium text-slate-900">{item.title}</p>
+                    <p className="text-sm text-slate-600">{item.message}</p>
+                    <p className="text-xs text-slate-500">{item.createdAt}</p>
+                  </div>
+                ))
+              )}
+            </section>
+          )}
         </div>
       </main>
     </div>

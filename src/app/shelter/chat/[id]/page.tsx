@@ -4,6 +4,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { getSupabaseClient } from "@/lib/supabaseClient";
 import { getRoleGuardRedirect, getLoginPathForRole } from "@/lib/flow";
+import { Button } from "@/components/ui/button";
 
 type ChatMessage = {
   id: string;
@@ -23,8 +24,10 @@ export default function ShelterChatPage() {
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [canChat, setCanChat] = useState(false);
+  const [partnerName, setPartnerName] = useState("Restaurant");
+  const [requestTitle, setRequestTitle] = useState("Matched Request");
 
-  const title = useMemo(() => `Request Chat #${requestId.slice(0, 8)}`, [requestId]);
+  const title = useMemo(() => `${partnerName} Chat`, [partnerName]);
 
   const loadMessages = async () => {
     const supabase = getSupabaseClient();
@@ -45,7 +48,7 @@ export default function ShelterChatPage() {
 
     const { data: requestRow } = await supabase
       .from("shelter_requests")
-      .select("id, shelter_id, status")
+      .select("id, shelter_id, title, status")
       .eq("id", requestId)
       .single();
 
@@ -57,6 +60,25 @@ export default function ShelterChatPage() {
       setLoading(false);
       setError("You can only chat on your own matched requests.");
       return;
+    }
+
+    setRequestTitle(requestRow?.title || "Matched Request");
+
+    const { data: acceptedResponse } = await supabase
+      .from("request_responses")
+      .select("restaurant_id")
+      .eq("request_id", requestId)
+      .eq("status", "accepted")
+      .maybeSingle();
+
+    if (acceptedResponse?.restaurant_id) {
+      const { data: profileRow } = await supabase
+        .from("profiles")
+        .select("name")
+        .eq("id", acceptedResponse.restaurant_id)
+        .maybeSingle();
+
+      setPartnerName(profileRow?.name || "Restaurant");
     }
 
     const { data, error: messagesError } = await supabase
@@ -80,11 +102,25 @@ export default function ShelterChatPage() {
 
     void loadMessages();
 
+    const supabase = getSupabaseClient();
+    const channel = supabase
+      .channel(`shelter-chat-${requestId}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "chat_messages", filter: `request_id=eq.${requestId}` }, () => {
+        void loadMessages();
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "shelter_requests", filter: `id=eq.${requestId}` }, () => {
+        void loadMessages();
+      })
+      .subscribe();
+
     const timer = setInterval(() => {
       void loadMessages();
-    }, 4000);
+    }, 15000);
 
-    return () => clearInterval(timer);
+    return () => {
+      clearInterval(timer);
+      void supabase.removeChannel(channel);
+    };
   }, [requestId]);
 
   const sendMessage = async (e: React.FormEvent) => {
@@ -128,41 +164,38 @@ export default function ShelterChatPage() {
   };
 
   return (
-    <div className="min-h-screen bg-yellow-50 p-6 font-sans">
-      <main className="mx-auto max-w-4xl rounded-2xl border-2 border-emerald-100 bg-white p-6 shadow-lg">
+    <div className="min-h-screen bg-slate-50 p-6">
+      <main className="mx-auto max-w-5xl rounded border border-slate-200 bg-white p-4 shadow-sm">
         <div className="mb-4 flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-emerald-900">{title}</h1>
-            <p className="text-sm text-emerald-700">Direct conversation with the matched restaurant.</p>
+            <h1 className="text-2xl font-semibold text-slate-900">{title}</h1>
+            <p className="text-sm text-slate-600">{requestTitle}</p>
           </div>
-          <button
-            onClick={() => router.push("/shelter/home")}
-            className="rounded-full border-2 border-emerald-500 px-4 py-2 text-sm font-semibold text-emerald-700 hover:bg-emerald-50"
-          >
+          <Button variant="secondary" onClick={() => router.push("/shelter/home")}>
             Back
-          </button>
+          </Button>
         </div>
 
         {loading ? (
-          <div className="rounded-lg border border-emerald-200 bg-yellow-50 p-4 text-emerald-900">Loading chat...</div>
+          <div className="rounded border border-slate-200 bg-slate-50 p-4 text-slate-700">Loading chat...</div>
         ) : (
           <>
-            <div className="h-[420px] overflow-y-auto rounded-xl border border-emerald-200 bg-yellow-50 p-4">
+            <div className="h-[500px] overflow-y-auto rounded border border-slate-200 bg-slate-50 p-3">
               {messages.length === 0 ? (
-                <p className="text-sm text-emerald-700">No messages yet. Start the conversation.</p>
+                <p className="text-sm text-slate-600">No messages yet. Start the conversation.</p>
               ) : (
                 <div className="space-y-3">
                   {messages.map((msg) => (
                     <div
                       key={msg.id}
-                      className={`max-w-[80%] rounded-lg px-4 py-3 text-sm ${
+                      className={`max-w-[78%] rounded-lg px-4 py-3 text-sm ${
                         msg.sender_role === "shelter"
-                          ? "ml-auto bg-emerald-600 text-white"
-                          : "bg-white text-emerald-900 border border-emerald-200"
+                          ? "ml-auto border border-emerald-800 bg-emerald-800 text-white"
+                          : "border border-slate-200 bg-white text-slate-900"
                       }`}
                     >
                       <p>{msg.message}</p>
-                      <p className={`mt-1 text-[11px] ${msg.sender_role === "shelter" ? "text-emerald-100" : "text-emerald-600"}`}>
+                      <p className={`mt-1 text-[11px] ${msg.sender_role === "shelter" ? "text-emerald-100" : "text-slate-500"}`}>
                         {new Date(msg.created_at).toLocaleString()}
                       </p>
                     </div>
@@ -179,15 +212,16 @@ export default function ShelterChatPage() {
                 onChange={(e) => setDraft(e.target.value)}
                 placeholder="Type a message"
                 disabled={!canChat}
-                className="flex-1 rounded-lg border-2 border-emerald-200 px-4 py-3 focus:border-emerald-500 focus:outline-none"
+                className="h-11 flex-1 rounded-md border border-slate-300 px-3 text-sm focus:border-emerald-700 focus:outline-none"
               />
-              <button
+              <Button
                 type="submit"
                 disabled={!canChat || sending || !draft.trim()}
-                className="rounded-lg bg-emerald-600 px-5 py-3 font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+                variant="primary"
+                className="h-11 px-5"
               >
                 {sending ? "Sending..." : "Send"}
-              </button>
+              </Button>
             </form>
           </>
         )}

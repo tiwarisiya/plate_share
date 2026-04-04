@@ -9,7 +9,13 @@ type RequestRow = {
   id: string;
   title: string;
   pickup_window: string | null;
-  status: "open" | "responded" | "matched" | "fulfilled" | "cancelled";
+  status: "open" | "responded" | "matched" | "completed" | "fulfilled" | "cancelled";
+};
+
+type ExistingResponseRow = {
+  proposed_pickup_window: string | null;
+  response_note: string | null;
+  status: "pending" | "accepted" | "rejected" | "cancelled";
 };
 
 export default function DonationConfirmPage() {
@@ -23,6 +29,7 @@ export default function DonationConfirmPage() {
   const [request, setRequest] = useState<RequestRow | null>(null);
   const [pickupWindow, setPickupWindow] = useState("");
   const [responseNote, setResponseNote] = useState("");
+  const [existingResponseStatus, setExistingResponseStatus] = useState<ExistingResponseRow["status"] | null>(null);
 
   const loadData = async () => {
     setLoading(true);
@@ -50,19 +57,31 @@ export default function DonationConfirmPage() {
       return;
     }
 
-    const [{ data: requestRow }, { data: existingResponse }] = await Promise.all([
+    const [{ data: requestRow, error: requestError }, { data: existingResponse, error: responseError }] = await Promise.all([
       supabase
         .from("shelter_requests")
         .select("id, title, pickup_window, status")
         .eq("id", requestId)
-        .single(),
+        .maybeSingle(),
       supabase
         .from("request_responses")
-        .select("proposed_pickup_window, response_note")
+        .select("proposed_pickup_window, response_note, status")
         .eq("request_id", requestId)
         .eq("restaurant_id", user.id)
-        .single(),
+        .maybeSingle(),
     ]);
+
+    if (requestError) {
+      setStatusMsg(`Failed to load request: ${requestError.message}`);
+      setLoading(false);
+      return;
+    }
+
+    if (responseError) {
+      setStatusMsg(`Failed to load response data: ${responseError.message}`);
+      setLoading(false);
+      return;
+    }
 
     if (!requestRow) {
       setStatusMsg("Request not found.");
@@ -73,8 +92,10 @@ export default function DonationConfirmPage() {
     const parsed = requestRow as RequestRow;
     setRequest(parsed);
 
-    setPickupWindow(existingResponse?.proposed_pickup_window || parsed.pickup_window || "");
-    setResponseNote(existingResponse?.response_note || "");
+    const response = (existingResponse as ExistingResponseRow | null) || null;
+    setPickupWindow(response?.proposed_pickup_window || parsed.pickup_window || "");
+    setResponseNote(response?.response_note || "");
+    setExistingResponseStatus(response?.status || null);
 
     setLoading(false);
   };
@@ -86,7 +107,13 @@ export default function DonationConfirmPage() {
 
   const handleSubmitResponse = async () => {
     if (!request) return;
-    if (request.status === "matched" || request.status === "fulfilled" || request.status === "cancelled") {
+
+    if (existingResponseStatus === "pending" || existingResponseStatus === "accepted") {
+      setStatusMsg("You already have an active response for this request.");
+      return;
+    }
+
+    if (request.status === "matched" || request.status === "completed" || request.status === "fulfilled" || request.status === "cancelled") {
       setStatusMsg("Cannot respond to this request because it is no longer open.");
       return;
     }
@@ -110,10 +137,22 @@ export default function DonationConfirmPage() {
         .eq("restaurant_id", user.id)
         .order("created_at", { ascending: false })
         .limit(1)
-        .single();
+        .maybeSingle();
 
       if (!donation) {
         throw new Error("No donation profile found. Complete onboarding first.");
+      }
+
+      const { data: latestResponse } = await supabase
+        .from("request_responses")
+        .select("status")
+        .eq("request_id", request.id)
+        .eq("restaurant_id", user.id)
+        .maybeSingle();
+
+      const latestStatus = latestResponse?.status as ExistingResponseRow["status"] | undefined;
+      if (latestStatus === "pending" || latestStatus === "accepted") {
+        throw new Error("You already have an active response for this request.");
       }
 
       const { error: responseError } = await supabase
@@ -133,6 +172,8 @@ export default function DonationConfirmPage() {
       if (responseError) {
         throw new Error(responseError.message);
       }
+
+      setExistingResponseStatus("pending");
 
       await supabase
         .from("shelter_requests")
@@ -180,7 +221,11 @@ export default function DonationConfirmPage() {
             {statusMsg ? <p className="mt-4 text-sm text-slate-700">{statusMsg}</p> : null}
 
             <div className="mt-5 flex gap-2">
-              <button className="rounded bg-emerald-800 px-4 py-2 text-sm text-white disabled:opacity-50" disabled={submitting} onClick={() => void handleSubmitResponse()}>
+              <button
+                className="rounded bg-emerald-800 px-4 py-2 text-sm text-white disabled:opacity-50"
+                disabled={submitting || existingResponseStatus === "pending" || existingResponseStatus === "accepted"}
+                onClick={() => void handleSubmitResponse()}
+              >
                 {submitting ? "Submitting..." : "Submit Response"}
               </button>
               <button className="rounded border px-4 py-2 text-sm" onClick={() => router.push(`/restaurant/donation/${request.id}`)}>Cancel</button>

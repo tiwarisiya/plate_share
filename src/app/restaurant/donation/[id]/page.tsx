@@ -34,8 +34,6 @@ type RequestRow = {
 type ProfileRow = {
   id: string;
   name: string | null;
-  email: string | null;
-  phone: string | null;
 };
 
 type ResponseRow = {
@@ -93,7 +91,7 @@ export default function DonationRequestDetailsPage() {
         "id, shelter_id, title, quantity, food_needed, food_restrictions, pickup_window, urgency, notes, coordination_notes, shelter_contact_email, shelter_contact_phone, address, city, state, zip_code, status, matched_donation_id"
       )
       .eq("id", requestId)
-      .single();
+      .maybeSingle();
 
     if (requestWithSnapshot.error && requestWithSnapshot.error.code === "42703") {
       const legacyRequest = await supabase
@@ -102,11 +100,21 @@ export default function DonationRequestDetailsPage() {
           "id, shelter_id, title, quantity, food_needed, food_restrictions, pickup_window, urgency, notes, coordination_notes, address, city, state, zip_code, status, matched_donation_id"
         )
         .eq("id", requestId)
-        .single();
+        .maybeSingle();
+
+      if (legacyRequest.error) {
+        setStatusMsg(`Failed to load request: ${legacyRequest.error.message}`);
+        setLoading(false);
+        return;
+      }
 
       requestRow = legacyRequest.data
         ? { ...legacyRequest.data, shelter_contact_email: null, shelter_contact_phone: null }
         : null;
+    } else if (requestWithSnapshot.error) {
+      setStatusMsg(`Failed to load request: ${requestWithSnapshot.error.message}`);
+      setLoading(false);
+      return;
     } else {
       requestRow = requestWithSnapshot.data;
     }
@@ -123,9 +131,9 @@ export default function DonationRequestDetailsPage() {
 
     const { data: shelter } = await supabase
       .from("profiles")
-      .select("id, name, email, phone")
+      .select("id, name")
       .eq("id", parsed.shelter_id)
-      .single();
+      .maybeSingle();
 
     setShelterProfile((shelter as ProfileRow) || null);
 
@@ -134,7 +142,7 @@ export default function DonationRequestDetailsPage() {
       .select("id, status, proposed_pickup_window")
       .eq("request_id", requestId)
       .eq("restaurant_id", user.id)
-      .single();
+      .maybeSingle();
 
     setMyResponse((responseRow as ResponseRow) || null);
 
@@ -143,7 +151,7 @@ export default function DonationRequestDetailsPage() {
         .from("donations")
         .select("id, restaurant_id")
         .eq("id", parsed.matched_donation_id)
-        .single();
+        .maybeSingle();
       setIsMatchedToMe(Boolean(donation && donation.restaurant_id === user.id));
     } else {
       setIsMatchedToMe(false);
@@ -158,15 +166,15 @@ export default function DonationRequestDetailsPage() {
   }, [requestId]);
 
   const contactVisible = useMemo(() => {
-    // Contact is available once this restaurant has an active response thread
-    // or when the request has reached matched state for this restaurant.
-    const hasActiveResponse = myResponse && myResponse.status !== "rejected" && myResponse.status !== "cancelled";
-    return Boolean(hasActiveResponse || isMatchedToMe);
+    // Contact is visible once this restaurant has responded at least once
+    // or when the request is matched to this restaurant.
+    const hasRespondedAtLeastOnce = Boolean(myResponse);
+    return Boolean(hasRespondedAtLeastOnce || isMatchedToMe);
   }, [myResponse, isMatchedToMe]);
 
   const canRespond = useMemo(() => {
     if (!request) return false;
-    if (request.status === "matched" || request.status === "fulfilled" || request.status === "cancelled") return false;
+    if (request.status === "matched" || request.status === "completed" || request.status === "fulfilled" || request.status === "cancelled") return false;
     if (!myResponse) return true;
     return myResponse.status === "rejected" || myResponse.status === "cancelled";
   }, [request, myResponse]);
@@ -175,7 +183,7 @@ export default function DonationRequestDetailsPage() {
     if (!request) return "Response unavailable";
     if (myResponse?.status === "accepted") return "Response accepted by shelter";
     if (myResponse?.status === "pending") return "Awaiting shelter decision";
-    if (request.status === "fulfilled") return "Request already completed";
+    if (request.status === "completed" || request.status === "fulfilled") return "Request already completed";
     if (request.status === "cancelled") return "Request cancelled by shelter";
     if (request.status === "matched") return "Request already matched";
     return "Response unavailable for this status";
@@ -233,14 +241,14 @@ export default function DonationRequestDetailsPage() {
               <p className="mb-2 text-xs uppercase tracking-wide text-slate-500">Shelter Contact Details</p>
               {contactVisible ? (
                 <div className="space-y-1 text-sm text-slate-700">
-                  <p>Email: {shelterProfile?.email || request.shelter_contact_email || "Not provided"}</p>
-                  <p>Phone: {shelterProfile?.phone || request.shelter_contact_phone || "Not provided"}</p>
-                  {!shelterProfile?.email && !shelterProfile?.phone && !request.shelter_contact_email && !request.shelter_contact_phone ? (
+                  <p>Email: {request.shelter_contact_email || "Not provided"}</p>
+                  <p>Phone: {request.shelter_contact_phone || "Not provided"}</p>
+                  {!request.shelter_contact_email && !request.shelter_contact_phone ? (
                     <p className="text-xs text-slate-500">Shelter has not published contact fields yet.</p>
                   ) : null}
                 </div>
               ) : (
-                <p className="text-sm text-slate-600">Visible after your restaurant submits a response.</p>
+                <p className="text-sm text-slate-600">Visible after your restaurant submits a response or when this request is matched to your restaurant.</p>
               )}
             </div>
 

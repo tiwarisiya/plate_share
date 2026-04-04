@@ -55,6 +55,15 @@ export default function RegisterDonorDetailsPage() {
           return;
         }
 
+        const {
+          data: { user: freshUser },
+        } = await supabase.auth.getUser();
+
+        if (!freshUser || !freshUser.email_confirmed_at) {
+          router.replace("/restaurant/register-donor");
+          return;
+        }
+
         const existingRole = await getCurrentUserRole(data.session.user.id);
         if (existingRole && existingRole !== "restaurant") {
           const isComplete = await isShelterProfileComplete(data.session.user.id);

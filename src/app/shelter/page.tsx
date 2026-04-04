@@ -18,7 +18,7 @@ export default function ShelterEntry() {
         data: { user },
       } = await supabase.auth.getUser();
 
-      if (user) {
+      if (user && user.email_confirmed_at) {
         const destination = await getAuthenticatedUserDefaultRoute(user.id, "shelter");
         router.replace(destination);
         return;

@@ -3,7 +3,6 @@
 import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { getSupabaseClient } from "@/lib/supabaseClient";
-import { getAuthenticatedUserDefaultRoute, getLoginPathForRole } from "@/lib/flow";
 import { Button } from "@/components/ui/button";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { Field, Input } from "@/components/ui/field";
@@ -148,21 +147,6 @@ export default function RegisterDonor() {
     }
   };
 
-  const handleSkipDemo = async () => {
-    const supabase = getSupabaseClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    if (!user) {
-      router.push(getLoginPathForRole("restaurant"));
-      return;
-    }
-
-    const destination = await getAuthenticatedUserDefaultRoute(user.id, "restaurant");
-    router.push(destination);
-  };
-
   return (
     <div className="min-h-screen bg-slate-50 px-6 py-10">
       <main className="mx-auto max-w-4xl">
@@ -196,7 +180,6 @@ export default function RegisterDonor() {
 
               <div className="md:col-span-2 flex flex-wrap gap-3">
                 <Button type="submit" disabled={loading}>{loading ? "Creating..." : "Create account"}</Button>
-                <Button type="button" variant="secondary" onClick={() => void handleSkipDemo()}>Skip Demo</Button>
                 {awaitingConfirmation ? (
                   <>
                     <Button type="button" variant="secondary" onClick={handleContinueAfterVerification} disabled={verifying}>

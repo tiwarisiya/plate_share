@@ -15,12 +15,14 @@ import { Sidebar } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 
 type Tab = "requests" | "notifications" | "settings";
+type RequestViewFilter = "active" | "all";
 
 type SettingsTab = "account" | "location" | "security";
 
 type RequestRow = {
   id: string;
   title: string;
+  request_type: string | null;
   quantity: number | null;
   food_needed: string | null;
   food_restrictions: string | null;
@@ -64,40 +66,92 @@ type ProfileRow = {
 
 type NewRequestState = {
   title: string;
+  requestType: string;
   quantity: string;
   foodNeeded: string;
   restrictions: string;
   pickupWindow: string;
   urgency: "low" | "medium" | "high";
   notes: string;
+  useCustomContact: boolean;
+  contactEmail: string;
+  contactPhone: string;
+  useCustomLocation: boolean;
+  locationAddress: string;
+  locationCity: string;
+  locationState: string;
+  locationZip: string;
 };
 
 type EditState = {
   requestId: string;
   title: string;
+  requestType: string;
   quantity: string;
   foodNeeded: string;
   restrictions: string;
   pickupWindow: string;
   urgency: "low" | "medium" | "high";
   notes: string;
+  contactEmail: string;
+  contactPhone: string;
+  locationAddress: string;
+  locationCity: string;
+  locationState: string;
+  locationZip: string;
   coordinationNotes: string;
+};
+
+type ChatInboxItem = {
+  requestId: string;
+  partnerName: string;
+  requestTitle: string;
+  lastSenderRole: "restaurant" | "shelter" | null;
+  preview: string;
+  createdAt: string;
+  timestamp: string;
+  sortAt: number;
 };
 
 const initialRequestState: NewRequestState = {
   title: "",
+  requestType: "",
   quantity: "",
   foodNeeded: "",
   restrictions: "",
   pickupWindow: "",
   urgency: "medium",
   notes: "",
+  useCustomContact: false,
+  contactEmail: "",
+  contactPhone: "",
+  useCustomLocation: false,
+  locationAddress: "",
+  locationCity: "",
+  locationState: "",
+  locationZip: "",
 };
+
+function isMissingShelterRequestsColumnError(
+  error: { code?: string; message?: string } | null,
+  column: string
+): boolean {
+  if (!error) return false;
+
+  if (error.code === "42703") return true;
+
+  // PostgREST can return schema cache misses as PGRST204 instead of SQL 42703.
+  if (error.code !== "PGRST204") return false;
+
+  const message = (error.message || "").toLowerCase();
+  return message.includes("schema cache") && message.includes(`'${column.toLowerCase()}'`);
+}
 
 export default function ShelterHomePage() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<Tab>("requests");
   const [activeSettingsTab, setActiveSettingsTab] = useState<SettingsTab>("account");
+  const [requestView, setRequestView] = useState<RequestViewFilter>("active");
   const [loading, setLoading] = useState(true);
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
@@ -105,6 +159,7 @@ export default function ShelterHomePage() {
   const [requests, setRequests] = useState<RequestRow[]>([]);
   const [responsesByRequest, setResponsesByRequest] = useState<Record<string, ResponseRow[]>>({});
   const [restaurantNames, setRestaurantNames] = useState<Record<string, string>>({});
+  const [chatInboxItems, setChatInboxItems] = useState<ChatInboxItem[]>([]);
   const [newRequest, setNewRequest] = useState<NewRequestState>(initialRequestState);
   const [editState, setEditState] = useState<EditState | null>(null);
   const [name, setName] = useState("");
@@ -117,9 +172,11 @@ export default function ShelterHomePage() {
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
 
-  const loadDashboard = async () => {
-    setLoading(true);
-    setStatusMsg(null);
+  const loadDashboard = async (silent = false) => {
+    if (!silent) {
+      setLoading(true);
+      setStatusMsg(null);
+    }
 
     const supabase = getSupabaseClient();
     const {
@@ -164,22 +221,74 @@ export default function ShelterHomePage() {
       setEmail(user.email || "");
     }
 
-    const { data: requestRows } = await supabase
+    const requestSelect =
+      "id, title, request_type, quantity, food_needed, food_restrictions, pickup_window, urgency, notes, coordination_notes, status, created_at, matched_donation_id, shelter_contact_email, shelter_contact_phone, address, city, state, zip_code";
+
+    let requestRows: any[] | null = null;
+    let requestError: { code?: string; message: string } | null = null;
+
+    const withRequestType = await supabase
       .from("shelter_requests")
-      .select(
-        "id, title, quantity, food_needed, food_restrictions, pickup_window, urgency, notes, coordination_notes, status, created_at, matched_donation_id, address, city, state, zip_code"
-      )
+      .select(requestSelect)
       .eq("shelter_id", user.id)
       .order("created_at", { ascending: false });
 
-    const parsedRequests = (requestRows || []) as RequestRow[];
+    requestRows = withRequestType.data;
+    requestError = withRequestType.error;
+
+    if (isMissingShelterRequestsColumnError(requestError, "request_type")) {
+      const withoutRequestType = await supabase
+        .from("shelter_requests")
+        .select(
+          "id, title, quantity, food_needed, food_restrictions, pickup_window, urgency, notes, coordination_notes, status, created_at, matched_donation_id, shelter_contact_email, shelter_contact_phone, address, city, state, zip_code"
+        )
+        .eq("shelter_id", user.id)
+        .order("created_at", { ascending: false });
+
+      requestRows = withoutRequestType.data;
+      requestError = withoutRequestType.error;
+
+      if (
+        isMissingShelterRequestsColumnError(requestError, "shelter_contact_email") ||
+        isMissingShelterRequestsColumnError(requestError, "shelter_contact_phone")
+      ) {
+        const legacyWithoutSnapshot = await supabase
+          .from("shelter_requests")
+          .select(
+            "id, title, quantity, food_needed, food_restrictions, pickup_window, urgency, notes, coordination_notes, status, created_at, matched_donation_id, address, city, state, zip_code"
+          )
+          .eq("shelter_id", user.id)
+          .order("created_at", { ascending: false });
+
+        requestRows = legacyWithoutSnapshot.data;
+        requestError = legacyWithoutSnapshot.error;
+      }
+    }
+
+    if (requestError) {
+      setStatusMsg(`Failed to load requests: ${requestError.message}`);
+      setRequests([]);
+      setResponsesByRequest({});
+      setRestaurantNames({});
+      setChatInboxItems([]);
+      if (!silent) setLoading(false);
+      return;
+    }
+
+    const parsedRequests = ((requestRows || []) as RequestRow[]).map((row) => ({
+      ...row,
+      request_type: row.request_type || null,
+      shelter_contact_email: row.shelter_contact_email || null,
+      shelter_contact_phone: row.shelter_contact_phone || null,
+    }));
     setRequests(parsedRequests);
 
     const requestIds = parsedRequests.map((row) => row.id);
     if (requestIds.length === 0) {
       setResponsesByRequest({});
       setRestaurantNames({});
-      setLoading(false);
+      setChatInboxItems([]);
+      if (!silent) setLoading(false);
       return;
     }
 
@@ -199,6 +308,7 @@ export default function ShelterHomePage() {
     });
     setResponsesByRequest(grouped);
 
+    let names: Record<string, string> = {};
     const restaurantIds = Array.from(new Set(parsedResponses.map((row) => row.restaurant_id)));
     if (restaurantIds.length > 0) {
       const { data: restaurantProfiles } = await supabase
@@ -206,20 +316,90 @@ export default function ShelterHomePage() {
         .select("id, name")
         .in("id", restaurantIds);
 
-      const names: Record<string, string> = {};
       (restaurantProfiles || []).forEach((row: any) => {
         names[row.id] = row.name || "Restaurant";
       });
-      setRestaurantNames(names);
+    }
+    setRestaurantNames(names);
+
+    const matchedRequests = parsedRequests.filter((row) => row.status === "matched");
+    if (matchedRequests.length === 0) {
+      setChatInboxItems([]);
     } else {
-      setRestaurantNames({});
+      const matchedRequestIds = matchedRequests.map((row) => row.id);
+      const { data: chatRows } = await supabase
+        .from("chat_messages")
+        .select("request_id, sender_role, message, created_at")
+        .in("request_id", matchedRequestIds)
+        .order("created_at", { ascending: false });
+
+      const latestByRequestId: Record<string, { sender_role: "restaurant" | "shelter"; message: string; created_at: string }> = {};
+      (chatRows || []).forEach((row: { request_id: string; sender_role: "restaurant" | "shelter"; message: string; created_at: string }) => {
+        if (!latestByRequestId[row.request_id]) {
+          latestByRequestId[row.request_id] = {
+            sender_role: row.sender_role,
+            message: row.message,
+            created_at: row.created_at,
+          };
+        }
+      });
+
+      const inbox = matchedRequests
+        .map((row) => {
+          const acceptedResponse = (grouped[row.id] || []).find((item) => item.status === "accepted");
+          const partnerName = acceptedResponse ? names[acceptedResponse.restaurant_id] || "Restaurant" : "Restaurant";
+          const latest = latestByRequestId[row.id];
+          const fallbackTime = new Date(row.created_at).getTime();
+          const latestTime = latest ? new Date(latest.created_at).getTime() : fallbackTime;
+          const senderPrefix = latest ? (latest.sender_role === "shelter" ? "You" : partnerName) : "No messages";
+
+          return {
+            requestId: row.id,
+            partnerName,
+            requestTitle: row.title,
+            lastSenderRole: latest ? latest.sender_role : null,
+            preview: latest ? `${senderPrefix}: ${latest.message}` : "No messages yet. Open chat to coordinate pickup.",
+            createdAt: latest ? latest.created_at : row.created_at,
+            timestamp: new Date(latest ? latest.created_at : row.created_at).toLocaleString(),
+            sortAt: latestTime,
+          };
+        })
+        .sort((a, b) => b.sortAt - a.sortAt);
+
+      setChatInboxItems(inbox);
     }
 
-    setLoading(false);
+    if (!silent) setLoading(false);
   };
 
   useEffect(() => {
     void loadDashboard();
+
+    const timer = setInterval(() => {
+      void loadDashboard(true);
+    }, 15000);
+
+    return () => clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    const supabase = getSupabaseClient();
+    const channel = supabase
+      .channel("shelter-home-realtime")
+      .on("postgres_changes", { event: "*", schema: "public", table: "chat_messages" }, () => {
+        void loadDashboard(true);
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "shelter_requests" }, () => {
+        void loadDashboard(true);
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "request_responses" }, () => {
+        void loadDashboard(true);
+      })
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
   }, []);
 
   const handleCreateRequest = async (e: React.FormEvent) => {
@@ -231,37 +411,83 @@ export default function ShelterHomePage() {
       return;
     }
 
-    if (!newRequest.title || !newRequest.quantity || !newRequest.pickupWindow) {
-      setStatusMsg("Request title, quantity, and pickup window are required.");
+    if (!newRequest.title || !newRequest.requestType || !newRequest.quantity || !newRequest.pickupWindow) {
+      setStatusMsg("Request title, request type, quantity, and pickup window are required.");
       return;
     }
 
     const quantity = Number.parseInt(newRequest.quantity, 10);
     const parsedQuantity = Number.isNaN(quantity) ? null : quantity;
+    if (!parsedQuantity || parsedQuantity <= 0) {
+      setStatusMsg("Servings needed must be a positive number.");
+      return;
+    }
+
+    const resolvedContactEmail = newRequest.useCustomContact
+      ? newRequest.contactEmail || null
+      : profile.email || null;
+    const resolvedContactPhone = newRequest.useCustomContact
+      ? newRequest.contactPhone || null
+      : profile.phone || null;
+    const resolvedAddress = newRequest.useCustomLocation
+      ? newRequest.locationAddress || null
+      : profile.address || null;
+    const resolvedCity = newRequest.useCustomLocation ? newRequest.locationCity || null : profile.city || null;
+    const resolvedState = newRequest.useCustomLocation
+      ? newRequest.locationState || null
+      : profile.state || null;
+    const resolvedZip = newRequest.useCustomLocation ? newRequest.locationZip || null : profile.zip_code || null;
 
     const supabase = getSupabaseClient();
     const insertWithSnapshot = await supabase.from("shelter_requests").insert([
       {
         shelter_id: userId,
         title: newRequest.title,
+        request_type: newRequest.requestType,
         quantity: parsedQuantity,
         food_needed: newRequest.foodNeeded || newRequest.title,
         food_restrictions: newRequest.restrictions || null,
         pickup_window: newRequest.pickupWindow,
         urgency: newRequest.urgency,
         notes: newRequest.notes || null,
-        shelter_contact_email: profile.email,
-        shelter_contact_phone: profile.phone,
-        address: profile.address,
-        city: profile.city,
-        state: profile.state,
-        zip_code: profile.zip_code,
+        shelter_contact_email: resolvedContactEmail,
+        shelter_contact_phone: resolvedContactPhone,
+        address: resolvedAddress,
+        city: resolvedCity,
+        state: resolvedState,
+        zip_code: resolvedZip,
         status: "open",
       },
     ]);
 
     let error = insertWithSnapshot.error;
-    if (error && error.code === "42703") {
+    if (isMissingShelterRequestsColumnError(error, "request_type")) {
+      const withoutRequestType = await supabase.from("shelter_requests").insert([
+        {
+          shelter_id: userId,
+          title: newRequest.title,
+          quantity: parsedQuantity,
+          food_needed: newRequest.foodNeeded || newRequest.title,
+          food_restrictions: newRequest.restrictions || null,
+          pickup_window: newRequest.pickupWindow,
+          urgency: newRequest.urgency,
+          notes: newRequest.notes || null,
+          shelter_contact_email: resolvedContactEmail,
+          shelter_contact_phone: resolvedContactPhone,
+          address: resolvedAddress,
+          city: resolvedCity,
+          state: resolvedState,
+          zip_code: resolvedZip,
+          status: "open",
+        },
+      ]);
+      error = withoutRequestType.error;
+    }
+
+    if (
+      isMissingShelterRequestsColumnError(error, "shelter_contact_email") ||
+      isMissingShelterRequestsColumnError(error, "shelter_contact_phone")
+    ) {
       const legacyInsert = await supabase.from("shelter_requests").insert([
         {
           shelter_id: userId,
@@ -272,10 +498,10 @@ export default function ShelterHomePage() {
           pickup_window: newRequest.pickupWindow,
           urgency: newRequest.urgency,
           notes: newRequest.notes || null,
-          address: profile.address,
-          city: profile.city,
-          state: profile.state,
-          zip_code: profile.zip_code,
+          address: resolvedAddress,
+          city: resolvedCity,
+          state: resolvedState,
+          zip_code: resolvedZip,
           status: "open",
         },
       ]);
@@ -296,12 +522,19 @@ export default function ShelterHomePage() {
     setEditState({
       requestId: row.id,
       title: row.title,
+      requestType: row.request_type || "",
       quantity: row.quantity ? String(row.quantity) : "",
       foodNeeded: row.food_needed || "",
       restrictions: row.food_restrictions || "",
       pickupWindow: row.pickup_window || "",
       urgency: row.urgency || "medium",
       notes: row.notes || "",
+      contactEmail: row.shelter_contact_email || profile?.email || "",
+      contactPhone: row.shelter_contact_phone || profile?.phone || "",
+      locationAddress: row.address || profile?.address || "",
+      locationCity: row.city || profile?.city || "",
+      locationState: row.state || profile?.state || "",
+      locationZip: row.zip_code || profile?.zip_code || "",
       coordinationNotes: row.coordination_notes || "",
     });
   };
@@ -322,19 +555,53 @@ export default function ShelterHomePage() {
         .from("shelter_requests")
         .update({
           title: editState.title,
+          request_type: editState.requestType || null,
           quantity: parsedQuantity,
           food_needed: editState.foodNeeded || editState.title,
           food_restrictions: editState.restrictions || null,
           pickup_window: editState.pickupWindow,
           urgency: editState.urgency,
           notes: editState.notes || null,
+          shelter_contact_email: editState.contactEmail || null,
+          shelter_contact_phone: editState.contactPhone || null,
+          address: editState.locationAddress || null,
+          city: editState.locationCity || null,
+          state: editState.locationState || null,
+          zip_code: editState.locationZip || null,
         })
         .eq("id", row.id)
         .eq("status", "open");
 
       if (error) {
-        setStatusMsg(`Failed to update request: ${error.message}`);
-        return;
+        if (isMissingShelterRequestsColumnError(error, "request_type")) {
+          const legacyUpdate = await supabase
+            .from("shelter_requests")
+            .update({
+              title: editState.title,
+              quantity: parsedQuantity,
+              food_needed: editState.foodNeeded || editState.title,
+              food_restrictions: editState.restrictions || null,
+              pickup_window: editState.pickupWindow,
+              urgency: editState.urgency,
+              notes: editState.notes || null,
+              shelter_contact_email: editState.contactEmail || null,
+              shelter_contact_phone: editState.contactPhone || null,
+              address: editState.locationAddress || null,
+              city: editState.locationCity || null,
+              state: editState.locationState || null,
+              zip_code: editState.locationZip || null,
+            })
+            .eq("id", row.id)
+            .eq("status", "open");
+
+          if (legacyUpdate.error) {
+            setStatusMsg(`Failed to update request: ${legacyUpdate.error.message}`);
+            return;
+          }
+        } else {
+          setStatusMsg(`Failed to update request: ${error.message}`);
+          return;
+        }
       }
     } else if (canEditPickupWindow(row.status)) {
       const { error } = await supabase
@@ -357,13 +624,89 @@ export default function ShelterHomePage() {
     await loadDashboard();
   };
 
-  const updateRequestStatus = async (requestId: string, nextStatus: "fulfilled" | "cancelled") => {
+  const updateRequestStatus = async (requestId: string, nextStatus: "completed" | "cancelled") => {
     const supabase = getSupabaseClient();
-    const { error } = await supabase.from("shelter_requests").update({ status: nextStatus }).eq("id", requestId);
-    if (error) {
-      setStatusMsg(`Failed to update status: ${error.message}`);
-      return;
+
+    let matchedDonationId = requests.find((row) => row.id === requestId)?.matched_donation_id || null;
+
+    if (nextStatus === "completed") {
+      const completedUpdate = await supabase
+        .from("shelter_requests")
+        .update({ status: "completed" })
+        .eq("id", requestId)
+        .eq("status", "matched");
+
+      if (completedUpdate.error) {
+        // Backward compatibility for schemas that still use "fulfilled".
+        if (completedUpdate.error.code === "22P02" || completedUpdate.error.code === "23514") {
+          const fulfilledUpdate = await supabase
+            .from("shelter_requests")
+            .update({ status: "fulfilled" })
+            .eq("id", requestId)
+            .eq("status", "matched");
+
+          if (fulfilledUpdate.error) {
+            setStatusMsg(`Failed to update status: ${fulfilledUpdate.error.message}`);
+            return;
+          }
+        } else {
+          setStatusMsg(`Failed to update status: ${completedUpdate.error.message}`);
+          return;
+        }
+      }
+
+      if (!matchedDonationId) {
+        const { data: acceptedResponse, error: acceptedResponseError } = await supabase
+          .from("request_responses")
+          .select("donation_id")
+          .eq("request_id", requestId)
+          .eq("status", "accepted")
+          .maybeSingle();
+
+        if (!acceptedResponseError) {
+          matchedDonationId = acceptedResponse?.donation_id || null;
+
+          if (matchedDonationId) {
+            await supabase
+              .from("shelter_requests")
+              .update({ matched_donation_id: matchedDonationId })
+              .eq("id", requestId)
+              .is("matched_donation_id", null);
+          }
+        }
+      }
+
+      if (matchedDonationId) {
+        const { error: donationUpdateError } = await supabase
+          .from("donations")
+          .update({ status: "completed" })
+          .eq("id", matchedDonationId)
+          .eq("matched_shelter_id", userId);
+
+        if (donationUpdateError) {
+          // Backward compatibility for environments that do not yet allow "completed" on donations.
+          if (donationUpdateError.code === "22P02" || donationUpdateError.code === "23514") {
+            await supabase
+              .from("donations")
+              .update({ status: "fulfilled" })
+              .eq("id", matchedDonationId)
+              .eq("matched_shelter_id", userId);
+          }
+        }
+      }
+    } else {
+      const { error } = await supabase
+        .from("shelter_requests")
+        .update({ status: "cancelled" })
+        .eq("id", requestId)
+        .in("status", ["open", "responded"]);
+
+      if (error) {
+        setStatusMsg(`Failed to update status: ${error.message}`);
+        return;
+      }
     }
+
     setStatusMsg(`Request marked ${nextStatus}.`);
     await loadDashboard();
   };
@@ -373,44 +716,60 @@ export default function ShelterHomePage() {
 
     const supabase = getSupabaseClient();
 
-    const { error: requestError } = await supabase
-      .from("shelter_requests")
-      .update({
-        status: "matched",
-        matched_donation_id: response.donation_id,
-        pickup_window: response.proposed_pickup_window || request.pickup_window,
-      })
-      .eq("id", request.id)
-      .in("status", ["open", "responded"]);
+    const rpcResult = await supabase.rpc("accept_request_response", {
+      p_request_id: request.id,
+      p_response_id: response.id,
+    });
 
-    if (requestError) {
-      setStatusMsg(`Failed to match request: ${requestError.message}`);
-      return;
-    }
+    if (rpcResult.error) {
+      const rpcMissing = rpcResult.error.code === "PGRST202" || rpcResult.error.code === "42883";
 
-    const { error: acceptError } = await supabase
-      .from("request_responses")
-      .update({ status: "accepted" })
-      .eq("id", response.id)
-      .eq("request_id", request.id);
+      if (!rpcMissing) {
+        setStatusMsg(`Failed to accept response: ${rpcResult.error.message}`);
+        return;
+      }
 
-    if (acceptError) {
-      setStatusMsg(`Failed to accept response: ${acceptError.message}`);
-      return;
-    }
+      // Backward-compatible fallback while database migrations or schema cache catch up.
+      const { error: requestError } = await supabase
+        .from("shelter_requests")
+        .update({
+          status: "matched",
+          matched_donation_id: response.donation_id,
+          pickup_window: response.proposed_pickup_window || request.pickup_window,
+        })
+        .eq("id", request.id)
+        .in("status", ["open", "responded"]);
 
-    await supabase
-      .from("request_responses")
-      .update({ status: "rejected" })
-      .eq("request_id", request.id)
-      .eq("status", "pending")
-      .neq("id", response.id);
+      if (requestError) {
+        setStatusMsg(`Failed to match request: ${requestError.message}`);
+        return;
+      }
 
-    if (response.donation_id) {
+      const { error: acceptError } = await supabase
+        .from("request_responses")
+        .update({ status: "accepted" })
+        .eq("id", response.id)
+        .eq("request_id", request.id)
+        .eq("status", "pending");
+
+      if (acceptError) {
+        setStatusMsg(`Failed to accept response: ${acceptError.message}`);
+        return;
+      }
+
       await supabase
-        .from("donations")
-        .update({ status: "matched", matched_shelter_id: userId })
-        .eq("id", response.donation_id);
+        .from("request_responses")
+        .update({ status: "rejected" })
+        .eq("request_id", request.id)
+        .eq("status", "pending")
+        .neq("id", response.id);
+
+      if (response.donation_id) {
+        await supabase
+          .from("donations")
+          .update({ status: "matched", matched_shelter_id: userId })
+          .eq("id", response.donation_id);
+      }
     }
 
     setStatusMsg("Response accepted and request matched.");
@@ -418,7 +777,7 @@ export default function ShelterHomePage() {
   };
 
   const notifications = useMemo(() => {
-    return requests
+    const requestItems = requests
       .filter((row) => row.status === "responded" || row.status === "matched")
       .map((row) => ({
         id: row.id,
@@ -427,9 +786,55 @@ export default function ShelterHomePage() {
           row.status === "matched"
             ? `${row.title} is matched and ready for coordination.`
             : `${row.title} has pending responses to review.`,
-        createdAt: new Date(row.created_at).toLocaleString(),
+        createdAt: row.created_at,
       }));
-  }, [requests]);
+
+    const chatItems = chatInboxItems
+      .filter((item) => item.lastSenderRole === "restaurant")
+      .map((item) => ({
+        id: `chat-${item.requestId}`,
+        title: "New chat message",
+        message: `${item.partnerName} sent a new message in ${item.requestTitle}.`,
+        createdAt: item.createdAt,
+      }));
+
+    return [...requestItems, ...chatItems]
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+      .map((item) => ({
+        ...item,
+        createdAt: new Date(item.createdAt).toLocaleString(),
+      }));
+  }, [requests, chatInboxItems]);
+
+  const activeRequests = useMemo(
+    () => requests.filter((row) => row.status === "open" || row.status === "responded" || row.status === "matched"),
+    [requests]
+  );
+
+  const visibleRequests = useMemo(
+    () => (requestView === "active" ? activeRequests : requests),
+    [activeRequests, requestView, requests]
+  );
+
+  const getResponseState = (row: RequestRow): string => {
+    const responses = responsesByRequest[row.id] || [];
+    const pendingCount = responses.filter((item) => item.status === "pending").length;
+    const acceptedCount = responses.filter((item) => item.status === "accepted").length;
+
+    if (row.status === "matched") {
+      return "Matched";
+    }
+    if (row.status === "responded") {
+      return pendingCount > 0 ? `${pendingCount} pending response${pendingCount > 1 ? "s" : ""}` : "Response received";
+    }
+    if (row.status === "open") {
+      return pendingCount > 0 ? `${pendingCount} pending response${pendingCount > 1 ? "s" : ""}` : "Awaiting responses";
+    }
+    if (row.status === "cancelled") {
+      return "Cancelled";
+    }
+    return "Completed";
+  };
 
   const navItems = useMemo(
     () => [
@@ -536,6 +941,16 @@ export default function ShelterHomePage() {
         subtitle="Shelter Operations"
         items={navItems}
         activeId={activeTab}
+        inboxAnchorId="requests"
+        inboxLabel="Chats"
+        inboxItems={chatInboxItems.map((item) => ({
+          id: item.requestId,
+          label: item.partnerName,
+          preview: item.preview,
+          timestamp: item.timestamp,
+          onClick: () => router.push(`/shelter/chat/${item.requestId}`),
+        }))}
+        inboxEmptyLabel="No active matched chats"
         footerLabel="Sign out"
         onFooterClick={() => void handleSignOut()}
       />
@@ -559,6 +974,7 @@ export default function ShelterHomePage() {
                 <h2 className="mb-3 text-sm font-medium text-slate-900">Create New Request</h2>
                 <form onSubmit={handleCreateRequest} className="space-y-3">
                   <input className="h-10 w-full rounded border border-slate-300 px-3 text-sm" placeholder="Request title" value={newRequest.title} onChange={(e) => setNewRequest((prev) => ({ ...prev, title: e.target.value }))} />
+                  <input className="h-10 w-full rounded border border-slate-300 px-3 text-sm" placeholder="Request type (Meal kits, Produce, Ready-to-eat)" value={newRequest.requestType} onChange={(e) => setNewRequest((prev) => ({ ...prev, requestType: e.target.value }))} />
                   <input className="h-10 w-full rounded border border-slate-300 px-3 text-sm" placeholder="Servings needed" value={newRequest.quantity} onChange={(e) => setNewRequest((prev) => ({ ...prev, quantity: e.target.value }))} />
                   <input className="h-10 w-full rounded border border-slate-300 px-3 text-sm" placeholder="Food types requested" value={newRequest.foodNeeded} onChange={(e) => setNewRequest((prev) => ({ ...prev, foodNeeded: e.target.value }))} />
                   <input className="h-10 w-full rounded border border-slate-300 px-3 text-sm" placeholder="Food restrictions" value={newRequest.restrictions} onChange={(e) => setNewRequest((prev) => ({ ...prev, restrictions: e.target.value }))} />
@@ -569,41 +985,98 @@ export default function ShelterHomePage() {
                     <option value="high">High urgency</option>
                   </select>
                   <textarea className="w-full rounded border border-slate-300 px-3 py-2 text-sm" rows={3} placeholder="Notes" value={newRequest.notes} onChange={(e) => setNewRequest((prev) => ({ ...prev, notes: e.target.value }))} />
-                  <button type="submit" className="h-10 w-full rounded bg-emerald-800 text-sm font-medium text-white">Post Request</button>
+
+                  <label className="flex items-center gap-2 text-xs text-slate-700">
+                    <input type="checkbox" checked={newRequest.useCustomContact} onChange={(e) => setNewRequest((prev) => ({ ...prev, useCustomContact: e.target.checked }))} />
+                    Override contact details for this request
+                  </label>
+                  {newRequest.useCustomContact ? (
+                    <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+                      <input className="h-9 rounded border border-slate-300 px-2 text-sm" placeholder="Contact email" value={newRequest.contactEmail} onChange={(e) => setNewRequest((prev) => ({ ...prev, contactEmail: e.target.value }))} />
+                      <input className="h-9 rounded border border-slate-300 px-2 text-sm" placeholder="Contact phone" value={newRequest.contactPhone} onChange={(e) => setNewRequest((prev) => ({ ...prev, contactPhone: e.target.value }))} />
+                    </div>
+                  ) : (
+                    <p className="text-xs text-slate-500">Using shelter profile contact: {profile?.email || "-"} / {profile?.phone || "-"}</p>
+                  )}
+
+                  <label className="flex items-center gap-2 text-xs text-slate-700">
+                    <input type="checkbox" checked={newRequest.useCustomLocation} onChange={(e) => setNewRequest((prev) => ({ ...prev, useCustomLocation: e.target.checked }))} />
+                    Override pickup location for this request
+                  </label>
+                  {newRequest.useCustomLocation ? (
+                    <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+                      <input className="h-9 rounded border border-slate-300 px-2 text-sm md:col-span-2" placeholder="Address" value={newRequest.locationAddress} onChange={(e) => setNewRequest((prev) => ({ ...prev, locationAddress: e.target.value }))} />
+                      <input className="h-9 rounded border border-slate-300 px-2 text-sm" placeholder="City" value={newRequest.locationCity} onChange={(e) => setNewRequest((prev) => ({ ...prev, locationCity: e.target.value }))} />
+                      <div className="grid grid-cols-2 gap-2">
+                        <input className="h-9 rounded border border-slate-300 px-2 text-sm" placeholder="State" value={newRequest.locationState} onChange={(e) => setNewRequest((prev) => ({ ...prev, locationState: e.target.value }))} />
+                        <input className="h-9 rounded border border-slate-300 px-2 text-sm" placeholder="ZIP" value={newRequest.locationZip} onChange={(e) => setNewRequest((prev) => ({ ...prev, locationZip: e.target.value }))} />
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-xs text-slate-500">Using shelter profile location: {profile?.address || "-"}</p>
+                  )}
+
+                  <Button type="submit" variant="primary" className="w-full">Post Request</Button>
                 </form>
               </section>
 
               <section className="col-span-12 rounded border border-slate-200 bg-white p-0 lg:col-span-8">
+                <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
+                  <p className="text-sm font-medium text-slate-800">Requests</p>
+                  <div className="flex items-center gap-2">
+                    <Button size="sm" variant={requestView === "active" ? "primary" : "secondary"} onClick={() => setRequestView("active")}>Active ({activeRequests.length})</Button>
+                    <Button size="sm" variant={requestView === "all" ? "primary" : "secondary"} onClick={() => setRequestView("all")}>All ({requests.length})</Button>
+                  </div>
+                </div>
+
                 <div className="grid grid-cols-12 gap-2 border-b border-slate-200 px-4 py-3 text-xs uppercase text-slate-500">
                   <p className="col-span-3">Request</p>
                   <p className="col-span-1">Urgency</p>
                   <p className="col-span-2">Pickup</p>
                   <p className="col-span-2">Status</p>
-                  <p className="col-span-4 text-right">Actions</p>
+                  <p className="col-span-2">Response State</p>
+                  <p className="col-span-2 text-right">Actions</p>
                 </div>
 
                 {loading ? (
                   <p className="px-4 py-6 text-sm text-slate-600">Loading requests...</p>
-                ) : requests.length === 0 ? (
-                  <p className="px-4 py-6 text-sm text-slate-600">No requests yet. Create your first request.</p>
+                ) : visibleRequests.length === 0 ? (
+                  <p className="px-4 py-6 text-sm text-slate-600">
+                    {requestView === "active" ? "No active requests right now." : "No requests yet. Create your first request."}
+                  </p>
                 ) : (
-                  requests.map((row) => {
+                  visibleRequests.map((row) => {
                     const responses = responsesByRequest[row.id] || [];
                     const pendingResponses = responses.filter((item) => item.status === "pending");
                     const acceptedResponse = responses.find((item) => item.status === "accepted");
                     const isEditing = editState?.requestId === row.id;
+                    const hasPendingResponses = pendingResponses.length > 0 && (row.status === "open" || row.status === "responded");
+                    const responseState = getResponseState(row);
 
                     return (
                       <div key={row.id} className="border-t border-slate-200 px-4 py-3 text-sm">
                         <div className="grid grid-cols-12 gap-2">
                           <div className="col-span-3">
                             <p className="font-medium text-slate-900">{row.title}</p>
-                            <p className="text-xs text-slate-500">{row.quantity || "-"} servings</p>
+                            <p className="text-xs text-slate-500">{row.request_type || "General request"} • {row.quantity || "-"} servings</p>
                           </div>
                           <p className="col-span-1 capitalize text-slate-700">{row.urgency}</p>
                           <p className="col-span-2 text-slate-700">{row.pickup_window || "-"}</p>
                           <p className="col-span-2 text-slate-700">{mapShelterStatusForUi(row.status)}</p>
-                          <div className="col-span-4 flex justify-end gap-2">
+                          <div className="col-span-2">
+                            <span
+                              className={`inline-flex max-w-full truncate rounded-full border px-2 py-0.5 text-xs font-medium ${
+                                hasPendingResponses
+                                  ? "border-slate-300 bg-slate-100 text-slate-700"
+                                  : row.status === "matched"
+                                    ? "border-emerald-300 bg-emerald-50 text-emerald-700"
+                                    : "border-slate-300 bg-slate-50 text-slate-700"
+                              }`}
+                            >
+                              {responseState}
+                            </span>
+                          </div>
+                          <div className="col-span-2 flex justify-end gap-2">
                             {(canEditCoreRequestFields(row.status) || canEditPickupWindow(row.status)) && (
                               <Button size="sm" variant="secondary" onClick={() => startEdit(row)}>Edit</Button>
                             )}
@@ -611,7 +1084,7 @@ export default function ShelterHomePage() {
                               <Button size="sm" variant="danger" onClick={() => void updateRequestStatus(row.id, "cancelled")}>Cancel</Button>
                             ) : null}
                             {row.status === "matched" ? (
-                              <Button size="sm" variant="primary" onClick={() => void updateRequestStatus(row.id, "fulfilled")}>Mark Completed</Button>
+                              <Button size="sm" variant="primary" onClick={() => void updateRequestStatus(row.id, "completed")}>Mark Completed</Button>
                             ) : null}
                           </div>
                         </div>
@@ -621,6 +1094,7 @@ export default function ShelterHomePage() {
                             {canEditCoreRequestFields(row.status) ? (
                               <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
                                 <input className="h-9 rounded border border-slate-300 px-2 text-sm" value={editState.title} onChange={(e) => setEditState((prev) => (prev ? { ...prev, title: e.target.value } : prev))} placeholder="Title" />
+                                <input className="h-9 rounded border border-slate-300 px-2 text-sm" value={editState.requestType} onChange={(e) => setEditState((prev) => (prev ? { ...prev, requestType: e.target.value } : prev))} placeholder="Request type" />
                                 <input className="h-9 rounded border border-slate-300 px-2 text-sm" value={editState.quantity} onChange={(e) => setEditState((prev) => (prev ? { ...prev, quantity: e.target.value } : prev))} placeholder="Servings" />
                                 <input className="h-9 rounded border border-slate-300 px-2 text-sm" value={editState.foodNeeded} onChange={(e) => setEditState((prev) => (prev ? { ...prev, foodNeeded: e.target.value } : prev))} placeholder="Food requested" />
                                 <input className="h-9 rounded border border-slate-300 px-2 text-sm" value={editState.restrictions} onChange={(e) => setEditState((prev) => (prev ? { ...prev, restrictions: e.target.value } : prev))} placeholder="Restrictions" />
@@ -630,6 +1104,14 @@ export default function ShelterHomePage() {
                                   <option value="medium">Medium</option>
                                   <option value="high">High</option>
                                 </select>
+                                <input className="h-9 rounded border border-slate-300 px-2 text-sm" value={editState.contactEmail} onChange={(e) => setEditState((prev) => (prev ? { ...prev, contactEmail: e.target.value } : prev))} placeholder="Contact email" />
+                                <input className="h-9 rounded border border-slate-300 px-2 text-sm" value={editState.contactPhone} onChange={(e) => setEditState((prev) => (prev ? { ...prev, contactPhone: e.target.value } : prev))} placeholder="Contact phone" />
+                                <input className="h-9 rounded border border-slate-300 px-2 text-sm md:col-span-2" value={editState.locationAddress} onChange={(e) => setEditState((prev) => (prev ? { ...prev, locationAddress: e.target.value } : prev))} placeholder="Address" />
+                                <input className="h-9 rounded border border-slate-300 px-2 text-sm" value={editState.locationCity} onChange={(e) => setEditState((prev) => (prev ? { ...prev, locationCity: e.target.value } : prev))} placeholder="City" />
+                                <div className="grid grid-cols-2 gap-2">
+                                  <input className="h-9 rounded border border-slate-300 px-2 text-sm" value={editState.locationState} onChange={(e) => setEditState((prev) => (prev ? { ...prev, locationState: e.target.value } : prev))} placeholder="State" />
+                                  <input className="h-9 rounded border border-slate-300 px-2 text-sm" value={editState.locationZip} onChange={(e) => setEditState((prev) => (prev ? { ...prev, locationZip: e.target.value } : prev))} placeholder="ZIP" />
+                                </div>
                                 <textarea className="rounded border border-slate-300 px-2 py-1 text-sm md:col-span-2" rows={2} value={editState.notes} onChange={(e) => setEditState((prev) => (prev ? { ...prev, notes: e.target.value } : prev))} placeholder="Notes" />
                               </div>
                             ) : (
@@ -639,24 +1121,29 @@ export default function ShelterHomePage() {
                               </div>
                             )}
                             <div className="mt-2 flex gap-2">
-                              <button className="rounded bg-emerald-800 px-3 py-1 text-xs text-white" onClick={() => void saveEdit()}>Save</button>
-                              <button className="rounded border px-3 py-1 text-xs" onClick={() => setEditState(null)}>Cancel</button>
+                              <Button size="sm" variant="primary" onClick={() => void saveEdit()}>Save</Button>
+                              <Button size="sm" variant="secondary" onClick={() => setEditState(null)}>Cancel</Button>
                             </div>
                           </div>
                         ) : null}
 
-                        {pendingResponses.length > 0 && (row.status === "open" || row.status === "responded") ? (
-                          <div className="mt-3 rounded border border-amber-200 bg-amber-50 p-3">
-                            <p className="mb-2 text-xs font-medium uppercase tracking-wide text-amber-700">Pending Restaurant Responses</p>
+                        {hasPendingResponses ? (
+                          <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50/80 p-3">
+                            <div className="mb-2 flex items-center justify-between">
+                              <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">Pending Restaurant Responses</p>
+                              <span className="rounded-full border border-slate-300 bg-white px-2 py-0.5 text-[11px] font-medium text-slate-700">
+                                {pendingResponses.length} waiting
+                              </span>
+                            </div>
                             <div className="space-y-2">
                               {pendingResponses.map((response) => (
-                                <div key={response.id} className="flex items-center justify-between rounded border border-amber-200 bg-white px-3 py-2">
-                                  <div>
+                                <div key={response.id} className="flex items-start justify-between gap-3 rounded-md border border-slate-200 bg-white px-3 py-2.5">
+                                  <div className="min-w-0">
                                     <p className="text-sm font-medium text-slate-900">{restaurantNames[response.restaurant_id] || "Restaurant"}</p>
                                     <p className="text-xs text-slate-600">Proposed pickup: {response.proposed_pickup_window || "Not provided"}</p>
                                     {response.response_note ? <p className="text-xs text-slate-500">{response.response_note}</p> : null}
                                   </div>
-                                  <button className="rounded bg-emerald-800 px-3 py-1 text-xs text-white" onClick={() => void acceptResponse(row, response)}>Accept</button>
+                                  <Button size="sm" variant="primary" onClick={() => void acceptResponse(row, response)}>Accept</Button>
                                 </div>
                               ))}
                             </div>
@@ -664,9 +1151,22 @@ export default function ShelterHomePage() {
                         ) : null}
 
                         {acceptedResponse && row.status === "matched" ? (
-                          <p className="mt-2 text-xs text-slate-600">
-                            Matched with {restaurantNames[acceptedResponse.restaurant_id] || "Restaurant"}. Proposed pickup: {acceptedResponse.proposed_pickup_window || row.pickup_window || "Not set"}
-                          </p>
+                          <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50/70 p-3">
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0">
+                                <div className="mb-1 inline-flex rounded-full border border-emerald-300 bg-white px-2 py-0.5 text-[11px] font-medium uppercase tracking-wide text-emerald-700">
+                                  Matched Response
+                                </div>
+                                <p className="text-sm font-medium text-slate-900">
+                                  {restaurantNames[acceptedResponse.restaurant_id] || "Restaurant"}
+                                </p>
+                                <p className="text-xs text-slate-700">
+                                  Confirmed pickup: {acceptedResponse.proposed_pickup_window || row.pickup_window || "Not set"}
+                                </p>
+                              </div>
+                              <Button size="sm" variant="secondary" onClick={() => router.push(`/shelter/chat/${row.id}`)}>Open Chat</Button>
+                            </div>
+                          </div>
                         ) : null}
                       </div>
                     );
@@ -714,7 +1214,7 @@ export default function ShelterHomePage() {
                       <input className="h-10 w-full rounded border border-slate-300 px-3 text-sm" value={email} onChange={(e) => setEmail(e.target.value)} type="email" />
                     </div>
                     <div className="md:col-span-2">
-                      <button type="submit" className="h-10 rounded bg-emerald-800 px-4 text-sm font-medium text-white">Save account</button>
+                      <Button type="submit" variant="primary">Save account</Button>
                     </div>
                   </form>
                 ) : activeSettingsTab === "location" ? (
@@ -738,7 +1238,7 @@ export default function ShelterHomePage() {
                       </div>
                     </div>
                     <div className="md:col-span-2">
-                      <button type="submit" className="h-10 rounded bg-emerald-800 px-4 text-sm font-medium text-white">Save location</button>
+                      <Button type="submit" variant="primary">Save location</Button>
                     </div>
                   </form>
                 ) : (
@@ -764,7 +1264,7 @@ export default function ShelterHomePage() {
                       />
                     </div>
                     <div className="md:col-span-2">
-                      <button type="submit" className="h-10 rounded bg-emerald-800 px-4 text-sm font-medium text-white">Update password</button>
+                      <Button type="submit" variant="primary">Update password</Button>
                     </div>
                   </form>
                 )}
