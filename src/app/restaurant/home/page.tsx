@@ -114,7 +114,7 @@ export default function RestaurantHome() {
       return;
     }
 
-    const [{ data: requestRows, error: requestError }, { data: myResponses, error: responsesError }, { data: myDonations, error: donationsError }] = await Promise.all([
+    const [{ data: requestRows, error: requestError }, { data: myResponses, error: responsesError }] = await Promise.all([
       supabase
         .from("shelter_requests")
         .select("id, shelter_id, title, quantity, food_needed, pickup_window, urgency, notes, city, state, status, created_at, matched_donation_id")
@@ -125,11 +125,10 @@ export default function RestaurantHome() {
         .select("id, request_id, restaurant_id, donation_id, proposed_pickup_window, status, created_at")
         .eq("restaurant_id", user.id)
         .order("created_at", { ascending: false }),
-      supabase.from("donations").select("id").eq("restaurant_id", user.id),
     ]);
 
-    if (requestError || responsesError || donationsError) {
-      setStatusMsg(`Failed to load dashboard: ${(requestError || responsesError || donationsError)?.message || "Unknown error"}`);
+    if (requestError || responsesError) {
+      setStatusMsg(`Failed to load dashboard: ${(requestError || responsesError)?.message || "Unknown error"}`);
       setOpenRequests([]);
       setMatchedRequests([]);
       setCompletedRequests([]);
@@ -175,26 +174,10 @@ export default function RestaurantHome() {
 
     const openQueue = parsedRequests.filter((row) => row.status === "open" || row.status === "responded");
 
-    const matchedRequestIds = new Set(
-      parsedResponses
-        .filter((resp) => resp.status === "accepted")
-        .map((resp) => resp.request_id)
-    );
-
-    const myDonationIds = new Set((myDonations || []).map((row: { id: string }) => row.id));
-
-    const matched = parsedRequests.filter(
-      (row) =>
-        (matchedRequestIds.has(row.id) ||
-          (Boolean(row.matched_donation_id) && myDonationIds.has(row.matched_donation_id as string))) &&
-        row.status === "matched"
-    );
+    const matched = parsedRequests.filter((row) => row.status === "matched");
 
     const completed = parsedRequests.filter(
-      (row) =>
-        (matchedRequestIds.has(row.id) ||
-          (Boolean(row.matched_donation_id) && myDonationIds.has(row.matched_donation_id as string))) &&
-        (row.status === "completed" || row.status === "fulfilled" || row.status === "cancelled")
+      (row) => row.status === "completed" || row.status === "fulfilled" || row.status === "cancelled"
     );
 
     setOpenRequests(openQueue);

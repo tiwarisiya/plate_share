@@ -3,66 +3,42 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import React from "react";
 import { Button } from "./ui/button";
-import { Card, CardBody } from "./ui/card";
+import { Card } from "./ui/card";
 
 export default function SplashScreen() {
   const router = useRouter();
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      <header className="border-b border-slate-200 bg-white">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
-          <div className="flex items-center gap-3">
-            <Image src="/logo.svg" alt="Plate Share logo" width={32} height={32} />
-            <p className="text-sm font-semibold text-slate-900">Plate Share</p>
+    <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_#dcfce7_0%,_#f0fdfa_40%,_#f8fafc_72%)] px-4 py-8 sm:px-6 lg:px-8">
+      <main className="mx-auto max-w-6xl">
+        <Card className="overflow-hidden border-emerald-100 bg-white/95 shadow-lg shadow-emerald-100/40 backdrop-blur-sm">
+          <div className="grid min-h-[680px] grid-cols-1 lg:grid-cols-2">
+            <section className="border-b border-emerald-100 bg-gradient-to-br from-white via-emerald-50/30 to-white p-8 sm:p-10 lg:border-b-0 lg:border-r">
+              <div className="flex flex-col items-center lg:items-start">
+                <Image src="/PlateShare_Logo.png" alt="Plate Share logo" width={900} height={938} className="h-64 w-auto" priority />
+
+                <div className="mt-8 w-full space-y-4">
+                  <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-4">
+                    <p className="text-lg font-semibold text-slate-800">Match live donation requests quickly</p>
+                  </div>
+                  <div className="rounded-xl border border-cyan-200 bg-cyan-50/70 p-4">
+                    <p className="text-lg font-semibold text-slate-800">Coordinate pickups in one place</p>
+                  </div>
+                  <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-4">
+                    <p className="text-lg font-semibold text-slate-800">Track every request end to end</p>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <section className="flex items-center justify-center bg-gradient-to-b from-white to-emerald-50/30 p-6 sm:p-10">
+              <div className="w-full max-w-md space-y-4">
+                <Button className="h-14 w-full text-lg" onClick={() => router.push("/restaurant")}>Continue as Restaurant</Button>
+                <Button variant="secondary" className="h-14 w-full text-lg" onClick={() => router.push("/shelter")}>Continue as Shelter</Button>
+              </div>
+            </section>
           </div>
-          <p className="text-sm text-slate-500">Food Donation Operations Platform</p>
-        </div>
-      </header>
-
-      <main className="mx-auto grid max-w-7xl grid-cols-12 gap-6 px-6 py-10">
-        <section className="col-span-12 rounded-lg border border-slate-200 bg-white p-8 lg:col-span-7">
-          <p className="text-sm font-medium text-emerald-800">Distribution Command Center</p>
-          <h1 className="mt-2 text-3xl font-bold text-slate-900">Coordinate surplus meals across restaurants and shelters</h1>
-          <p className="mt-3 max-w-2xl text-sm text-slate-600">
-            Match supply and demand in real time, track accepted requests, and keep logistics communication centralized.
-          </p>
-
-          <div className="mt-8 grid grid-cols-1 gap-4 md:grid-cols-3">
-            <Card>
-              <CardBody>
-                <p className="text-xs uppercase tracking-wide text-slate-500">Response Time</p>
-                <p className="mt-2 text-2xl font-bold text-slate-900">18m</p>
-                <p className="text-xs text-slate-500">Average request acceptance</p>
-              </CardBody>
-            </Card>
-            <Card>
-              <CardBody>
-                <p className="text-xs uppercase tracking-wide text-slate-500">Active Partners</p>
-                <p className="mt-2 text-2xl font-bold text-slate-900">126</p>
-                <p className="text-xs text-slate-500">Restaurants and shelters online</p>
-              </CardBody>
-            </Card>
-            <Card>
-              <CardBody>
-                <p className="text-xs uppercase tracking-wide text-slate-500">Meals Coordinated</p>
-                <p className="mt-2 text-2xl font-bold text-slate-900">8.4k</p>
-                <p className="text-xs text-slate-500">In the last 30 days</p>
-              </CardBody>
-            </Card>
-          </div>
-        </section>
-
-        <section className="col-span-12 lg:col-span-5">
-          <Card className="h-full">
-            <CardBody className="space-y-3">
-              <p className="text-sm font-medium text-slate-800">Choose your workspace</p>
-              <p className="text-sm text-slate-600">Access the dashboard tailored to your operations role.</p>
-              <Button className="w-full" onClick={() => router.push("/restaurant")}>Continue as Restaurant</Button>
-              <Button variant="secondary" className="w-full" onClick={() => router.push("/shelter")}>Continue as Shelter</Button>
-            </CardBody>
-          </Card>
-        </section>
+        </Card>
       </main>
     </div>
   );

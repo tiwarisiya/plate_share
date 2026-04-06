@@ -1,0 +1,19 @@
+<svg width="160" height="120" viewBox="0 0 160 120" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="loopGreen" x1="18" y1="12" x2="142" y2="108" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#11871C"/>
+      <stop offset="1" stop-color="#0A6D13"/>
+    </linearGradient>
+    <linearGradient id="loopTeal" x1="34" y1="38" x2="126" y2="84" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#1399A5"/>
+      <stop offset="1" stop-color="#0E7E8B"/>
+    </linearGradient>
+  </defs>
+
+  <path d="M50 102C28 102 10 84 10 62C10 40 28 22 50 22C66 22 80 29 91 44L80 54C72 43 62 38 50 38C37 38 26 49 26 62C26 75 37 86 50 86C61 86 71 81 79 70L91 80C81 94 66 102 50 102Z" fill="url(#loopGreen)"/>
+  <path d="M110 102C94 102 79 94 69 80L80 70C88 81 98 86 110 86C123 86 134 75 134 62C134 49 123 38 110 38C98 38 88 43 80 54L69 44C80 29 94 22 110 22C132 22 150 40 150 62C150 84 132 102 110 102Z" fill="url(#loopGreen)"/>
+  <path d="M80 37L98 55L80 73L62 55L80 37Z" fill="url(#loopGreen)"/>
+
+  <path d="M52 81C41 81 32 72 32 61C32 50 41 41 52 41C60 41 67 45 72 52L62 61C60 58 56 56 52 56C49 56 47 58 47 61C47 64 49 66 52 66C56 66 60 64 62 61L72 70C67 77 60 81 52 81Z" fill="url(#loopTeal)"/>
+  <path d="M108 81C100 81 93 77 88 70L98 61C100 64 104 66 108 66C111 66 113 64 113 61C113 58 111 56 108 56C104 56 100 58 98 61L88 52C93 45 100 41 108 41C119 41 128 50 128 61C128 72 119 81 108 81Z" fill="url(#loopTeal)"/>
+</svg>

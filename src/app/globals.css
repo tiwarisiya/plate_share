@@ -28,6 +28,23 @@ body {
   line-height: 1.45;
 }
 
+/* Readability baseline: enforce minimum 16px text app-wide. */
+.text-xs,
+.text-sm {
+  font-size: 1rem !important;
+  line-height: 1.5rem !important;
+}
+
+[class*="text-[10px]"],
+[class*="text-[11px]"],
+[class*="text-[12px]"],
+[class*="text-[13px]"],
+[class*="text-[14px]"],
+[class*="text-[15px]"] {
+  font-size: 1rem !important;
+  line-height: 1.5rem !important;
+}
+
 h1,
 h2,
 h3 {

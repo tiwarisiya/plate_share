@@ -1,0 +1,24 @@
+<svg width="768" height="800" viewBox="0 0 768 800" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="768" height="800" rx="8" fill="#F2F5F3"/>
+
+  <defs>
+    <linearGradient id="greenRing" x1="170" y1="250" x2="610" y2="470" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0C8C18"/>
+      <stop offset="1" stop-color="#0A6E13"/>
+    </linearGradient>
+    <linearGradient id="tealInner" x1="220" y1="330" x2="548" y2="462" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#149AA6"/>
+      <stop offset="1" stop-color="#0D7E8B"/>
+    </linearGradient>
+  </defs>
+
+  <ellipse cx="280" cy="400" rx="132" ry="112" stroke="url(#greenRing)" stroke-width="44"/>
+  <ellipse cx="488" cy="400" rx="132" ry="112" stroke="url(#greenRing)" stroke-width="44"/>
+
+  <ellipse cx="280" cy="400" rx="74" ry="62" stroke="url(#tealInner)" stroke-width="36"/>
+  <ellipse cx="488" cy="400" rx="74" ry="62" stroke="url(#tealInner)" stroke-width="36"/>
+
+  <path d="M304 454L478 288" stroke="url(#greenRing)" stroke-width="58" stroke-linecap="butt"/>
+
+  <text x="384" y="662" fill="#3A3F49" font-family="Segoe UI, Arial, sans-serif" font-size="80" font-weight="700" letter-spacing="4" text-anchor="middle">PLATE SHARE</text>
+</svg>
