@@ -979,9 +979,28 @@ export default function ShelterHomePage() {
 
           {activeTab === "requests" ? (
             <div className="flex flex-col gap-4 md:grid md:grid-cols-12">
-              {/* Mobile: Create Request button */}
-              <div className="md:hidden">
-                <Button className="w-full" onClick={() => setShowCreateForm(true)}>+ Create Request</Button>
+              {/* Mobile: Create Request + nearby banner */}
+              <div className="md:hidden space-y-3">
+                <Button className="w-full rounded-full text-base font-semibold" onClick={() => setShowCreateForm(true)}>+ Create Request</Button>
+
+                {/* Nearby restaurants banner */}
+                <div className="flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3">
+                  <span className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-600 text-white text-sm">📍</span>
+                  <div className="flex-1">
+                    <p className="text-sm font-medium text-emerald-900">Nearby restaurants available</p>
+                    <p className="text-xs text-emerald-700">Live availability nearby</p>
+                  </div>
+                  <button className="text-xs font-medium text-emerald-700">Map Toggle</button>
+                </div>
+
+                {/* Active & Recent heading */}
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-semibold text-slate-900">Active &amp; Recent Requests</p>
+                  <div className="flex gap-2">
+                    <Button size="sm" variant={requestView === "active" ? "primary" : "secondary"} className="rounded-full" onClick={() => setRequestView("active")}>Active ({activeRequests.length})</Button>
+                    <Button size="sm" variant={requestView === "all" ? "primary" : "secondary"} className="rounded-full" onClick={() => setRequestView("all")}>All ({requests.length})</Button>
+                  </div>
+                </div>
               </div>
 
               {/* Mobile: Create Request overlay */}
@@ -1133,43 +1152,50 @@ export default function ShelterHomePage() {
                           </div>
                         </div>
 
-                        {/* Mobile card */}
-                        <div className="md:hidden space-y-2">
-                          <div className="flex items-start justify-between gap-2">
-                            <div>
-                              <p className="font-medium text-slate-900">{row.title}</p>
-                              <p className="text-xs text-slate-500">{row.request_type || "General request"} • {row.quantity || "-"} servings</p>
+                        {/* Mobile: Rich request card (template design) */}
+                        <div className="md:hidden">
+                          <div className="flex gap-3">
+                            {/* Request icon */}
+                            <div className="h-14 w-14 shrink-0 rounded-xl bg-amber-100 flex items-center justify-center text-2xl">
+                              🍽️
                             </div>
-                            <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium capitalize ${
-                              row.urgency === "high" ? "bg-rose-100 text-rose-800" :
-                              row.urgency === "medium" ? "bg-amber-100 text-amber-800" :
-                              "bg-slate-100 text-slate-700"
-                            }`}>{row.urgency}</span>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-start justify-between gap-2">
+                                <p className="font-semibold text-slate-900 truncate">{row.title}</p>
+                                <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase ${
+                                  row.status === "matched" ? "bg-emerald-100 text-emerald-800" :
+                                  row.status === "completed" || row.status === "fulfilled" ? "bg-blue-100 text-blue-800" :
+                                  row.status === "cancelled" ? "bg-slate-100 text-slate-600" :
+                                  "bg-amber-100 text-amber-800"
+                                }`}>{mapShelterStatusForUi(row.status)}</span>
+                              </div>
+                              <p className="text-xs text-slate-500">{row.request_type || "General"} • {row.quantity || "-"} servings</p>
+                              <p className="mt-0.5 text-xs text-slate-500">Pickup: {row.pickup_window || "-"}</p>
+                              {/* Response state badge */}
+                              <div className="mt-1">
+                                <span className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] font-medium ${
+                                  hasPendingResponses
+                                    ? "border-slate-300 bg-slate-100 text-slate-700"
+                                    : row.status === "matched"
+                                      ? "border-emerald-300 bg-emerald-50 text-emerald-700"
+                                      : "border-slate-300 bg-slate-50 text-slate-700"
+                                }`}>{responseState}</span>
+                              </div>
+                            </div>
                           </div>
-                          <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-600">
-                            <span>Pickup: {row.pickup_window || "-"}</span>
-                            <span>{mapShelterStatusForUi(row.status)}</span>
-                          </div>
-                          <span
-                            className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-medium ${
-                              hasPendingResponses
-                                ? "border-slate-300 bg-slate-100 text-slate-700"
-                                : row.status === "matched"
-                                  ? "border-emerald-300 bg-emerald-50 text-emerald-700"
-                                  : "border-slate-300 bg-slate-50 text-slate-700"
-                            }`}
-                          >
-                            {responseState}
-                          </span>
-                          <div className="flex flex-wrap gap-2 pt-1">
+                          {/* Action buttons row */}
+                          <div className="mt-2 flex gap-2 pl-[68px]">
                             {(canEditCoreRequestFields(row.status) || canEditPickupWindow(row.status)) && (
-                              <Button size="sm" variant="secondary" onClick={() => startEdit(row)}>Edit</Button>
+                              <Button size="sm" variant="secondary" className="rounded-full" onClick={() => startEdit(row)}>Edit</Button>
                             )}
                             {row.status === "open" || row.status === "responded" ? (
-                              <Button size="sm" variant="danger" onClick={() => void updateRequestStatus(row.id, "cancelled")}>Cancel</Button>
+                              <Button size="sm" variant="danger" className="rounded-full" onClick={() => void updateRequestStatus(row.id, "cancelled")}>Cancel</Button>
                             ) : null}
                             {row.status === "matched" ? (
-                              <Button size="sm" variant="primary" onClick={() => void updateRequestStatus(row.id, "completed")}>Mark Completed</Button>
+                              <Button size="sm" variant="primary" className="rounded-full" onClick={() => void updateRequestStatus(row.id, "completed")}>Complete</Button>
+                            ) : null}
+                            {row.status === "completed" || row.status === "fulfilled" ? (
+                              <span className="flex items-center text-xs text-emerald-700 font-medium">Delivered ✓</span>
                             ) : null}
                           </div>
                         </div>
