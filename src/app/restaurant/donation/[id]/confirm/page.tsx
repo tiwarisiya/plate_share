@@ -191,44 +191,75 @@ export default function DonationConfirmPage() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 p-4 md:p-6">
-      <main className="mx-auto max-w-3xl rounded border border-slate-200 bg-white p-4 md:p-6">
+    <div className="min-h-screen bg-slate-50 p-0 md:p-6">
+      <main className="mx-auto max-w-3xl bg-white md:rounded md:border md:border-slate-200 md:shadow-sm">
         {loading ? (
-          <p className="text-sm text-slate-600">Loading...</p>
+          <div className="p-4 text-sm text-slate-600">Loading...</div>
         ) : !request ? (
-          <p className="text-sm text-slate-600">Request unavailable.</p>
+          <div className="p-4 text-sm text-slate-600">Request unavailable.</div>
         ) : (
           <>
-            <div className="mb-4 flex items-center justify-between">
-              <button className="rounded border px-3 py-2 text-sm" onClick={() => router.push(`/restaurant/donation/${request.id}`)}>Back</button>
-              <p className="text-sm text-slate-600">Status: {request.status}</p>
+            {/* Header */}
+            <div className="flex items-center gap-3 border-b border-slate-200 px-4 py-3">
+              <button onClick={() => router.push(`/restaurant/donation/${request.id}`)} className="text-slate-600 md:hidden">
+                ←
+              </button>
+              <div className="flex-1 min-w-0">
+                <h1 className="text-base font-semibold text-slate-900 md:text-xl">Respond to Request</h1>
+                <p className="text-xs text-slate-500 md:text-sm">Status: {request.status}</p>
+              </div>
+              <button className="hidden md:inline-flex rounded border border-slate-300 px-3 py-2 text-sm" onClick={() => router.push(`/restaurant/donation/${request.id}`)}>
+                Back
+              </button>
             </div>
 
-            <h1 className="text-xl font-semibold text-slate-900">Respond to Request</h1>
-            <p className="mt-1 text-sm text-slate-600">Submit your coordination details. Shelter will accept or reject your response.</p>
+            {/* Form */}
+            <div className="px-4 py-4 md:px-6 md:py-5 space-y-4">
+              <p className="text-sm text-slate-600">Submit your coordination details. The shelter will accept or reject your response.</p>
 
-            <div className="mt-5 space-y-3">
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">Proposed pickup window</label>
-                <input className="h-10 w-full rounded border border-slate-300 px-3 text-sm" value={pickupWindow} onChange={(e) => setPickupWindow(e.target.value)} placeholder="Today 16:00 - 18:00" />
+                <input
+                  className="h-12 w-full rounded-xl border border-slate-300 px-4 text-sm md:h-10 md:rounded-md md:px-3"
+                  value={pickupWindow}
+                  onChange={(e) => setPickupWindow(e.target.value)}
+                  placeholder="Today 16:00 - 18:00"
+                />
               </div>
+
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">Response note (optional)</label>
-                <textarea className="w-full rounded border border-slate-300 px-3 py-2 text-sm" rows={4} value={responseNote} onChange={(e) => setResponseNote(e.target.value)} placeholder="Packaging, loading, or scheduling notes" />
+                <textarea
+                  className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm md:rounded-md md:px-3 md:py-2"
+                  rows={4}
+                  value={responseNote}
+                  onChange={(e) => setResponseNote(e.target.value)}
+                  placeholder="Packaging, loading, or scheduling notes"
+                />
               </div>
-            </div>
 
-            {statusMsg ? <p className="mt-4 text-sm text-slate-700">{statusMsg}</p> : null}
+              {statusMsg ? (
+                <div className="rounded-xl bg-slate-50 border border-slate-200 p-3">
+                  <p className="text-sm text-slate-700">{statusMsg}</p>
+                </div>
+              ) : null}
 
-            <div className="mt-5 flex gap-2">
-              <button
-                className="rounded bg-emerald-800 px-4 py-2 text-sm text-white disabled:opacity-50"
-                disabled={submitting || existingResponseStatus === "pending" || existingResponseStatus === "accepted"}
-                onClick={() => void handleSubmitResponse()}
-              >
-                {submitting ? "Submitting..." : "Submit Response"}
-              </button>
-              <button className="rounded border px-4 py-2 text-sm" onClick={() => router.push(`/restaurant/donation/${request.id}`)}>Cancel</button>
+              {/* Action buttons */}
+              <div className="flex flex-col gap-2 pt-2 md:flex-row">
+                <button
+                  className="h-12 w-full rounded-xl bg-emerald-800 text-sm font-semibold text-white disabled:opacity-50 md:h-10 md:w-auto md:rounded-md md:px-5"
+                  disabled={submitting || existingResponseStatus === "pending" || existingResponseStatus === "accepted"}
+                  onClick={() => void handleSubmitResponse()}
+                >
+                  {submitting ? "Submitting..." : "Submit Response"}
+                </button>
+                <button
+                  className="h-12 w-full rounded-xl border border-slate-300 text-sm font-medium md:h-10 md:w-auto md:rounded-md md:px-5"
+                  onClick={() => router.push(`/restaurant/donation/${request.id}`)}
+                >
+                  Cancel
+                </button>
+              </div>
             </div>
           </>
         )}

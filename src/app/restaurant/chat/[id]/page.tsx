@@ -164,63 +164,76 @@ export default function RestaurantChatPage() {
 
   return (
     <div className="min-h-screen bg-slate-50 p-0 md:p-6">
-      <main className="mx-auto max-w-5xl rounded-none border-0 bg-white p-3 md:rounded md:border md:border-slate-200 md:p-4 md:shadow-sm">
-        <div className="mb-4 flex items-center justify-between">
-          <div>
-            <h1 className="text-xl font-semibold text-slate-900 md:text-2xl">{title}</h1>
-            <p className="text-sm text-slate-600">{requestTitle}</p>
+      <main className="mx-auto max-w-5xl rounded-none border-0 bg-white md:rounded md:border md:border-slate-200 md:shadow-sm">
+        {/* Chat header */}
+        <div className="flex items-center gap-3 border-b border-slate-200 px-4 py-3">
+          <button onClick={() => router.push("/restaurant/home")} className="text-slate-600 md:hidden">
+            ←
+          </button>
+          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-100 text-lg md:hidden">
+            🏠
           </div>
-          <Button variant="secondary" onClick={() => router.push("/restaurant/home")}>
+          <div className="flex-1 min-w-0">
+            <h1 className="text-base font-semibold text-slate-900 truncate md:text-2xl">{title}</h1>
+            <p className="text-xs text-slate-500 md:text-sm">{requestTitle}</p>
+          </div>
+          <Button variant="secondary" className="hidden md:inline-flex" onClick={() => router.push("/restaurant/home")}>
             Back
           </Button>
         </div>
 
         {loading ? (
-          <div className="rounded border border-slate-200 bg-slate-50 p-4 text-slate-700">Loading chat...</div>
+          <div className="p-4 text-slate-700">Loading chat...</div>
         ) : (
           <>
-            <div className="h-[calc(100dvh-180px)] md:h-[500px] overflow-y-auto rounded border border-slate-200 bg-slate-50 p-3">
+            {/* Messages area */}
+            <div className="h-[calc(100dvh-140px)] md:h-[500px] overflow-y-auto bg-slate-50 p-3 md:p-4">
               {messages.length === 0 ? (
-                <p className="text-sm text-slate-600">No messages yet. Start the conversation.</p>
+                <p className="text-center text-sm text-slate-500 mt-8">No messages yet. Start the conversation.</p>
               ) : (
                 <div className="space-y-3">
                   {messages.map((msg) => (
                     <div
                       key={msg.id}
-                      className={`max-w-[78%] rounded-lg px-4 py-3 text-sm ${
-                        msg.sender_role === "restaurant"
-                          ? "ml-auto border border-emerald-800 bg-emerald-800 text-white"
-                          : "border border-slate-200 bg-white text-slate-900"
-                      }`}
+                      className={`flex ${msg.sender_role === "restaurant" ? "justify-end" : "justify-start"}`}
                     >
-                      <p>{msg.message}</p>
-                      <p className={`mt-1 text-[11px] ${msg.sender_role === "restaurant" ? "text-emerald-100" : "text-slate-500"}`}>
-                        {new Date(msg.created_at).toLocaleString()}
-                      </p>
+                      <div
+                        className={`max-w-[78%] rounded-2xl px-4 py-2.5 text-sm ${
+                          msg.sender_role === "restaurant"
+                            ? "rounded-br-sm bg-emerald-800 text-white"
+                            : "rounded-bl-sm border border-slate-200 bg-white text-slate-900"
+                        }`}
+                      >
+                        <p>{msg.message}</p>
+                        <p className={`mt-1 text-[10px] ${msg.sender_role === "restaurant" ? "text-emerald-200" : "text-slate-400"}`}>
+                          {new Date(msg.created_at).toLocaleString()}
+                        </p>
+                      </div>
                     </div>
                   ))}
                 </div>
               )}
             </div>
 
-            {error && <p className="mt-3 text-sm font-semibold text-red-700">{error}</p>}
+            {error && <p className="px-4 py-2 text-sm font-semibold text-red-700">{error}</p>}
 
-            <form onSubmit={sendMessage} className="sticky bottom-0 mt-3 flex gap-2 bg-white pt-2 md:static md:mt-4 md:gap-3 md:pt-0">
+            {/* Input area */}
+            <form onSubmit={sendMessage} className="sticky bottom-0 flex items-center gap-2 border-t border-slate-200 bg-white p-3 md:static md:p-4">
               <input
                 value={draft}
                 onChange={(e) => setDraft(e.target.value)}
                 placeholder="Type a message"
                 disabled={!canChat}
-                className="h-11 flex-1 rounded-md border border-slate-300 px-3 text-sm focus:border-emerald-700 focus:outline-none"
+                className="h-11 flex-1 rounded-full border border-slate-300 px-4 text-sm focus:border-emerald-700 focus:outline-none md:rounded-md"
               />
-              <Button
+              <button
                 type="submit"
                 disabled={!canChat || sending || !draft.trim()}
-                variant="primary"
-                className="h-11 px-5"
+                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-emerald-700 text-white disabled:opacity-50 md:w-auto md:rounded-md md:px-5"
               >
-                {sending ? "Sending..." : "Send"}
-              </Button>
+                <span className="md:hidden">↑</span>
+                <span className="hidden md:inline">{sending ? "Sending..." : "Send"}</span>
+              </button>
             </form>
           </>
         )}

@@ -386,7 +386,8 @@ export default function RestaurantHome() {
 
       <main className="flex-1 px-4 pt-[72px] pb-20 md:px-6 md:py-6 md:pt-6 md:pb-6">
         <div className="mx-auto max-w-7xl">
-          <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          {/* Desktop header */}
+          <div className="mb-4 hidden md:flex md:items-center md:justify-between">
             <div>
               <h1 className="text-2xl font-semibold text-slate-900">{activeTab === "requests" ? "Restaurant Request Queue" : "Notifications"}</h1>
               <p className="text-sm text-slate-600">
@@ -396,7 +397,7 @@ export default function RestaurantHome() {
               </p>
             </div>
             {activeTab === "requests" ? (
-              <div className="flex gap-2 overflow-x-auto pb-1 md:overflow-visible md:pb-0">
+              <div className="flex gap-2">
                 <Button variant={requestTab === "open" ? "primary" : "secondary"} className="shrink-0 whitespace-nowrap" onClick={() => setRequestTab("open")}>Open Requests</Button>
                 <Button variant={requestTab === "matched" ? "primary" : "secondary"} className="shrink-0 whitespace-nowrap" onClick={() => setRequestTab("matched")}>Matched</Button>
                 <Button variant={requestTab === "completed" ? "primary" : "secondary"} className="shrink-0 whitespace-nowrap" onClick={() => setRequestTab("completed")}>Completed</Button>
@@ -404,10 +405,59 @@ export default function RestaurantHome() {
             ) : null}
           </div>
 
+          {/* Mobile: Stats bar + filters (template design) */}
+          {activeTab === "requests" ? (
+            <div className="mb-4 md:hidden">
+              {/* Stats bar */}
+              <div className="mb-4 grid grid-cols-3 gap-3">
+                <div className="rounded-xl border border-slate-200 bg-white p-3 text-center">
+                  <p className="text-2xl font-bold text-slate-900">{matchedRequests.length}</p>
+                  <p className="text-[11px] text-slate-500">Accepted<br />Today</p>
+                  {matchedRequests.length > 0 ? <span className="mt-1 inline-block text-emerald-600">✓</span> : null}
+                </div>
+                <div className="rounded-xl border border-slate-200 bg-white p-3 text-center">
+                  <p className="text-2xl font-bold text-slate-900">{openRequests.length}</p>
+                  <p className="text-[11px] text-slate-500">Pending<br />Offers</p>
+                  <p className="mt-0.5 text-[10px] text-amber-600">awaiting response</p>
+                </div>
+                <div className="rounded-xl border border-slate-200 bg-white p-3 text-center">
+                  <p className="text-2xl font-bold text-emerald-700">Live</p>
+                  <p className="mt-1 inline-block h-2 w-2 rounded-full bg-emerald-500" />
+                </div>
+              </div>
+
+              {/* Tab pills */}
+              <div className="mb-3 flex gap-2 overflow-x-auto pb-1">
+                <button onClick={() => setRequestTab("open")} className={`shrink-0 rounded-full px-4 py-2 text-sm font-medium transition ${requestTab === "open" ? "bg-emerald-800 text-white" : "border border-slate-300 bg-white text-slate-700"}`}>Open Requests</button>
+                <button onClick={() => setRequestTab("matched")} className={`shrink-0 rounded-full px-4 py-2 text-sm font-medium transition ${requestTab === "matched" ? "bg-emerald-800 text-white" : "border border-slate-300 bg-white text-slate-700"}`}>Matched</button>
+                <button onClick={() => setRequestTab("completed")} className={`shrink-0 rounded-full px-4 py-2 text-sm font-medium transition ${requestTab === "completed" ? "bg-emerald-800 text-white" : "border border-slate-300 bg-white text-slate-700"}`}>Completed</button>
+              </div>
+
+              {/* Filter chips */}
+              <div className="mb-3">
+                <p className="mb-2 text-xs font-medium text-slate-500">Filters</p>
+                <div className="flex flex-wrap gap-2">
+                  {["High", "Medium", "Low"].map((level) => (
+                    <span key={level} className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs text-slate-600">{level}</span>
+                  ))}
+                  {["Vegetarian", "Vegan", "Gluten Free"].map((diet) => (
+                    <span key={diet} className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs text-emerald-700">{diet}</span>
+                  ))}
+                </div>
+              </div>
+
+              {/* Nearby Requests heading */}
+              <div className="mb-2 flex items-center justify-between">
+                <p className="text-sm font-semibold text-slate-900">Nearby Requests</p>
+                <p className="text-xs text-slate-400">Sorted by distance</p>
+              </div>
+            </div>
+          ) : null}
+
           {statusMsg ? <p className="mb-4 text-sm text-slate-700">{statusMsg}</p> : null}
 
           {activeTab === "requests" ? (
-          <section className="rounded border border-slate-200 bg-white p-0">
+          <section className="rounded-xl border border-slate-200 bg-white p-0 md:rounded">
             {loading ? (
               <p className="px-4 py-6 text-sm text-slate-600">Loading requests...</p>
             ) : requestTab === "open" ? (
@@ -463,38 +513,42 @@ export default function RestaurantHome() {
                         </div>
                       </div>
 
-                      {/* Mobile card */}
-                      <div className="md:hidden space-y-2">
-                        <div className="flex items-start justify-between gap-2">
-                          <div>
-                            <p className="font-medium text-slate-900">{row.title}</p>
-                            <p className="text-xs text-slate-500">{row.city || "City"}, {row.state || "ST"}</p>
+                      {/* Mobile: Rich request card (template design) */}
+                      <div className="md:hidden">
+                        <div className="flex gap-3">
+                          {/* Shelter avatar placeholder */}
+                          <div className="h-14 w-14 shrink-0 rounded-xl bg-emerald-100 flex items-center justify-center text-2xl">
+                            🏠
                           </div>
-                          <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium capitalize ${
-                            row.urgency === "high" ? "bg-rose-100 text-rose-800" :
-                            row.urgency === "medium" ? "bg-amber-100 text-amber-800" :
-                            "bg-slate-100 text-slate-700"
-                          }`}>{row.urgency}</span>
-                        </div>
-                        <p className="text-xs text-slate-600">{shelterNamesById[row.shelter_id] || "Shelter"}</p>
-                        <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-600">
-                          <span>Servings: {row.quantity || "-"}</span>
-                          <span>{row.food_needed || "Not specified"}</span>
-                          <span>Pickup: {row.pickup_window || "Not set"}</span>
-                        </div>
-                        <div className="flex gap-2 pt-1">
-                          <button className="flex-1 rounded border border-slate-300 px-3 py-2 text-xs" onClick={() => router.push(`/restaurant/donation/${row.id}`)}>
-                            View Details
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="min-w-0">
+                                <p className="font-semibold text-slate-900 truncate">{shelterNamesById[row.shelter_id] || "Shelter"}</p>
+                                <p className="text-xs text-slate-500">Shelter</p>
+                              </div>
+                              <span className="shrink-0 text-xs text-slate-500">Portions: {row.quantity || "-"}</span>
+                            </div>
+                            <p className="mt-0.5 text-xs text-slate-500">{row.city || "City"}, {row.state || "ST"}</p>
+                            <p className="mt-1 text-xs text-slate-600">
+                              Pickup: {row.pickup_window || "Not set"} • Dietary: {row.food_needed || "Not specified"}
+                            </p>
+                            {/* Dietary tags */}
+                            {row.food_needed ? (
+                              <div className="mt-2 flex flex-wrap gap-1">
+                                {row.food_needed.split(",").map((tag) => (
+                                  <span key={tag.trim()} className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] text-emerald-700 border border-emerald-200">
+                                    {tag.trim()}
+                                  </span>
+                                ))}
+                              </div>
+                            ) : null}
+                          </div>
+                          <button
+                            className="self-center shrink-0 rounded-full bg-emerald-800 px-4 py-2 text-xs font-semibold text-white"
+                            onClick={() => router.push(`/restaurant/donation/${row.id}`)}
+                          >
+                            View
                           </button>
-                          {respondAction.canRespond ? (
-                            <button className="flex-1 rounded bg-emerald-800 px-3 py-2 text-xs text-white" onClick={() => router.push(`/restaurant/donation/${row.id}/confirm`)}>
-                              {respondAction.label}
-                            </button>
-                          ) : (
-                            <button className="flex-1 cursor-not-allowed rounded border px-3 py-2 text-xs text-slate-500" disabled>
-                              {respondAction.label}
-                            </button>
-                          )}
                         </div>
                       </div>
                     </div>
