@@ -14,7 +14,7 @@ import { MobileHeader, MobileBottomNav } from "@/components/ui/mobile-nav";
 import { Button } from "@/components/ui/button";
 
 type Tab = "open" | "matched" | "completed";
-type ScreenTab = "requests" | "notifications";
+type ScreenTab = "requests" | "chats" | "notifications";
 type RequestTab = "open" | "matched" | "completed";
 
 type RequestRow = {
@@ -351,9 +351,8 @@ export default function RestaurantHome() {
 
   const navItems = [
     { id: "requests", label: "Requests", icon: "📋", onClick: () => setActiveTab("requests") },
-    { id: "notifications", label: "Notifications", icon: "🔔", onClick: () => setActiveTab("notifications"), count: notifications.length },
+    { id: "chats", label: "Chats", icon: "💬", onClick: () => setActiveTab("chats"), count: chatInboxItems.length },
     { id: "profile", label: "Profile", icon: "👤", onClick: () => router.push("/restaurant/profile") },
-    { id: "settings", label: "Settings", icon: "⚙️", onClick: () => router.push("/restaurant/settings") },
   ];
 
   return (
@@ -386,70 +385,45 @@ export default function RestaurantHome() {
 
       <main className="flex-1 px-4 pt-[72px] pb-20 md:px-6 md:py-6 md:pt-6 md:pb-6">
         <div className="mx-auto max-w-7xl">
-          {/* Desktop header */}
-          <div className="mb-4 hidden md:flex md:items-center md:justify-between">
-            <div>
-              <h1 className="text-2xl font-semibold text-slate-900">{activeTab === "requests" ? "Restaurant Request Queue" : "Notifications"}</h1>
-              <p className="text-sm text-slate-600">
-                {activeTab === "requests"
-                  ? "Browse open shelter requests and manage your response pipeline."
-                  : "Track matching updates, reminders, and incoming chat activity."}
-              </p>
-            </div>
-            {activeTab === "requests" ? (
-              <div className="flex gap-2">
-                <Button variant={requestTab === "open" ? "primary" : "secondary"} className="shrink-0 whitespace-nowrap" onClick={() => setRequestTab("open")}>Open Requests</Button>
-                <Button variant={requestTab === "matched" ? "primary" : "secondary"} className="shrink-0 whitespace-nowrap" onClick={() => setRequestTab("matched")}>Matched</Button>
-                <Button variant={requestTab === "completed" ? "primary" : "secondary"} className="shrink-0 whitespace-nowrap" onClick={() => setRequestTab("completed")}>Completed</Button>
+          {/* Page title */}
+          <div className="mb-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h1 className="text-lg font-semibold text-slate-900 md:text-2xl">{activeTab === "requests" ? "Restaurant Request Queue" : activeTab === "chats" ? "Chats" : "Notifications"}</h1>
+                <p className="text-xs text-slate-600 md:text-sm">
+                  {activeTab === "requests"
+                    ? "Browse shelter requests and manage your response pipeline."
+                    : activeTab === "chats"
+                    ? "Conversations with shelters on matched requests."
+                    : "Track matching updates, reminders, and incoming chat activity."}
+                </p>
               </div>
-            ) : null}
+              {activeTab === "requests" ? (
+                <div className="hidden md:flex gap-2">
+                  <Button variant={requestTab === "open" ? "primary" : "secondary"} className="shrink-0 whitespace-nowrap" onClick={() => setRequestTab("open")}>Open Requests</Button>
+                  <Button variant={requestTab === "matched" ? "primary" : "secondary"} className="shrink-0 whitespace-nowrap" onClick={() => setRequestTab("matched")}>Matched</Button>
+                  <Button variant={requestTab === "completed" ? "primary" : "secondary"} className="shrink-0 whitespace-nowrap" onClick={() => setRequestTab("completed")}>Completed</Button>
+                </div>
+              ) : null}
+            </div>
           </div>
 
-          {/* Mobile: Stats bar + filters (template design) */}
+          {/* Mobile: Tappable stats tiles */}
           {activeTab === "requests" ? (
-            <div className="mb-4 md:hidden">
-              {/* Stats bar */}
-              <div className="mb-4 grid grid-cols-3 gap-3">
-                <div className="rounded-xl border border-slate-200 bg-white p-3 text-center">
-                  <p className="text-2xl font-bold text-slate-900">{matchedRequests.length}</p>
-                  <p className="text-[11px] text-slate-500">Accepted<br />Today</p>
-                  {matchedRequests.length > 0 ? <span className="mt-1 inline-block text-emerald-600">✓</span> : null}
-                </div>
-                <div className="rounded-xl border border-slate-200 bg-white p-3 text-center">
-                  <p className="text-2xl font-bold text-slate-900">{openRequests.length}</p>
-                  <p className="text-[11px] text-slate-500">Pending<br />Offers</p>
-                  <p className="mt-0.5 text-[10px] text-amber-600">awaiting response</p>
-                </div>
-                <div className="rounded-xl border border-slate-200 bg-white p-3 text-center">
-                  <p className="text-2xl font-bold text-emerald-700">Live</p>
-                  <p className="mt-1 inline-block h-2 w-2 rounded-full bg-emerald-500" />
-                </div>
-              </div>
-
-              {/* Tab pills */}
-              <div className="mb-3 flex gap-2 overflow-x-auto pb-1">
-                <button onClick={() => setRequestTab("open")} className={`shrink-0 rounded-full px-4 py-2 text-sm font-medium transition ${requestTab === "open" ? "bg-emerald-800 text-white" : "border border-slate-300 bg-white text-slate-700"}`}>Open Requests</button>
-                <button onClick={() => setRequestTab("matched")} className={`shrink-0 rounded-full px-4 py-2 text-sm font-medium transition ${requestTab === "matched" ? "bg-emerald-800 text-white" : "border border-slate-300 bg-white text-slate-700"}`}>Matched</button>
-                <button onClick={() => setRequestTab("completed")} className={`shrink-0 rounded-full px-4 py-2 text-sm font-medium transition ${requestTab === "completed" ? "bg-emerald-800 text-white" : "border border-slate-300 bg-white text-slate-700"}`}>Completed</button>
-              </div>
-
-              {/* Filter chips */}
-              <div className="mb-3">
-                <p className="mb-2 text-xs font-medium text-slate-500">Filters</p>
-                <div className="flex flex-wrap gap-2">
-                  {["High", "Medium", "Low"].map((level) => (
-                    <span key={level} className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs text-slate-600">{level}</span>
-                  ))}
-                  {["Vegetarian", "Vegan", "Gluten Free"].map((diet) => (
-                    <span key={diet} className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs text-emerald-700">{diet}</span>
-                  ))}
-                </div>
-              </div>
-
-              {/* Nearby Requests heading */}
-              <div className="mb-2 flex items-center justify-between">
-                <p className="text-sm font-semibold text-slate-900">Nearby Requests</p>
-                <p className="text-xs text-slate-400">Sorted by distance</p>
+            <div className="mb-4 md:hidden space-y-3">
+              <div className="grid grid-cols-3 gap-3">
+                <button onClick={() => setRequestTab("open")} className={`rounded-xl p-3 text-center transition ${requestTab === "open" ? "border-2 border-emerald-600 bg-emerald-50" : "border border-slate-200 bg-white"}`}>
+                  <p className={`text-2xl font-bold ${requestTab === "open" ? "text-emerald-700" : "text-slate-900"}`}>{openRequests.length}</p>
+                  <p className="text-[11px] text-slate-500">Open<br />Requests</p>
+                </button>
+                <button onClick={() => setRequestTab("matched")} className={`rounded-xl p-3 text-center transition ${requestTab === "matched" ? "border-2 border-emerald-600 bg-emerald-50" : "border border-slate-200 bg-white"}`}>
+                  <p className={`text-2xl font-bold ${requestTab === "matched" ? "text-emerald-700" : "text-slate-900"}`}>{matchedRequests.length}</p>
+                  <p className="text-[11px] text-slate-500">Matched</p>
+                </button>
+                <button onClick={() => setRequestTab("completed")} className={`rounded-xl p-3 text-center transition ${requestTab === "completed" ? "border-2 border-emerald-600 bg-emerald-50" : "border border-slate-200 bg-white"}`}>
+                  <p className={`text-2xl font-bold ${requestTab === "completed" ? "text-emerald-700" : "text-slate-900"}`}>{completedRequests.length}</p>
+                  <p className="text-[11px] text-slate-500">Completed</p>
+                </button>
               </div>
             </div>
           ) : null}
@@ -516,7 +490,7 @@ export default function RestaurantHome() {
                       {/* Mobile: Rich request card (template design) */}
                       <div className="md:hidden">
                         <div className="flex gap-3">
-                          {/* Shelter avatar placeholder */}
+                          {/* Shelter avatar */}
                           <div className="h-14 w-14 shrink-0 rounded-xl bg-emerald-100 flex items-center justify-center text-2xl">
                             🏠
                           </div>
@@ -524,31 +498,33 @@ export default function RestaurantHome() {
                             <div className="flex items-start justify-between gap-2">
                               <div className="min-w-0">
                                 <p className="font-semibold text-slate-900 truncate">{shelterNamesById[row.shelter_id] || "Shelter"}</p>
-                                <p className="text-xs text-slate-500">Shelter</p>
+                                <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase ${
+                                  row.urgency === "high" ? "bg-red-100 text-red-800" :
+                                  row.urgency === "medium" ? "bg-amber-100 text-amber-800" :
+                                  "bg-green-100 text-green-800"
+                                }`}>{row.urgency} urgency</span>
                               </div>
-                              <span className="shrink-0 text-xs text-slate-500">Portions: {row.quantity || "-"}</span>
+                              <span className="shrink-0 text-xs text-slate-500">{row.quantity || "-"} servings</span>
                             </div>
-                            <p className="mt-0.5 text-xs text-slate-500">{row.city || "City"}, {row.state || "ST"}</p>
-                            <p className="mt-1 text-xs text-slate-600">
-                              Pickup: {row.pickup_window || "Not set"} • Dietary: {row.food_needed || "Not specified"}
-                            </p>
-                            {/* Dietary tags */}
-                            {row.food_needed ? (
-                              <div className="mt-2 flex flex-wrap gap-1">
-                                {row.food_needed.split(",").map((tag) => (
-                                  <span key={tag.trim()} className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] text-emerald-700 border border-emerald-200">
-                                    {tag.trim()}
-                                  </span>
-                                ))}
-                              </div>
-                            ) : null}
+                            <p className="mt-1 text-xs text-slate-500">{row.city || "City"}, {row.state || "ST"} • Pickup: {row.pickup_window || "Not set"}</p>
+                            <p className="mt-0.5 text-xs text-slate-600">{row.food_needed || "Not specified"}</p>
                           </div>
+                        </div>
+                        {/* Action buttons row */}
+                        <div className="mt-2 flex gap-2 pl-[68px]">
                           <button
-                            className="self-center shrink-0 rounded-full bg-emerald-800 px-4 py-2 text-xs font-semibold text-white"
+                            className="rounded-full border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700"
                             onClick={() => router.push(`/restaurant/donation/${row.id}`)}
                           >
-                            View
+                            Details
                           </button>
+                          {respondAction.canRespond ? (
+                            <button className="rounded-full bg-emerald-800 px-3 py-1.5 text-xs font-medium text-white" onClick={() => router.push(`/restaurant/donation/${row.id}/confirm`)}>
+                              {respondAction.label}
+                            </button>
+                          ) : (
+                            <span className="flex items-center text-xs text-slate-500">{respondAction.label}</span>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -592,8 +568,41 @@ export default function RestaurantHome() {
               )
             )}
           </section>
+          ) : activeTab === "chats" ? (
+            <section className="rounded-xl border border-slate-200 bg-white p-0 md:rounded">
+              <div className="px-4 py-3 border-b border-slate-200">
+                <p className="text-sm font-semibold text-slate-900">Matched Chats</p>
+                <p className="text-xs text-slate-500">Conversations with shelters on matched requests</p>
+              </div>
+              {chatInboxItems.length === 0 ? (
+                <p className="px-4 py-6 text-sm text-slate-600">No active chats. Chats become available when a request is matched to your restaurant.</p>
+              ) : (
+                chatInboxItems.map((item) => (
+                  <button
+                    key={item.requestId}
+                    className="flex w-full items-center gap-3 border-t border-slate-200 px-4 py-3 text-left first:border-t-0 hover:bg-slate-50 transition"
+                    onClick={() => router.push(`/restaurant/chat/${item.requestId}`)}
+                  >
+                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-lg">
+                      🏠
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-sm font-semibold text-slate-900 truncate">{item.partnerName}</p>
+                        <p className="shrink-0 text-[10px] text-slate-400">{item.timestamp}</p>
+                      </div>
+                      <p className="text-xs text-slate-500 truncate">{item.requestTitle}</p>
+                      <p className="mt-0.5 text-xs text-slate-600 truncate">{item.preview}</p>
+                    </div>
+                  </button>
+                ))
+              )}
+            </section>
           ) : (
-            <section className="rounded border border-slate-200 bg-white p-0">
+            <section className="rounded-xl border border-slate-200 bg-white p-0 md:rounded">
+              <div className="px-4 py-3 border-b border-slate-200 md:hidden">
+                <p className="text-sm font-semibold text-slate-900">Notifications</p>
+              </div>
               {notifications.length === 0 ? (
                 <p className="px-4 py-6 text-sm text-slate-600">No notifications yet.</p>
               ) : (

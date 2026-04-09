@@ -188,16 +188,6 @@ export default function ShelterLogin() {
             </button>
           </form>
 
-          {/* Phone login hint - mobile */}
-          <div className="mt-4 md:hidden">
-            <div className="relative mb-3">
-              <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-slate-200" /></div>
-              <div className="relative flex justify-center"><span className="bg-white px-3 text-xs text-slate-400">Or</span></div>
-            </div>
-            <button className="w-full text-center text-sm text-emerald-700 font-medium">
-              Sign in with phone number
-            </button>
-          </div>
 
           {/* Create account link */}
           <p className="mt-4 text-center text-sm text-slate-600 md:text-left">
