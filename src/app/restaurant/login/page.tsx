@@ -158,14 +158,14 @@ export default function RestaurantLogin() {
 
           <form onSubmit={handleSubmit} className="mt-4 space-y-4 md:mt-6">
             <div>
-              <label className="mb-1 block text-sm font-medium text-slate-700">Email or Phone</label>
+              <label className="mb-1 block text-sm font-medium text-slate-700">Email</label>
               <input
-                type="text"
+                type="email"
                 name="identifier"
                 value={form.identifier}
                 onChange={handleChange}
                 required
-                placeholder="example@restaurant.com or 555-555-5555"
+                placeholder="example@restaurant.com"
                 className="h-12 w-full rounded-xl border border-slate-300 px-4 text-sm md:h-10 md:rounded-md md:px-3"
               />
             </div>
@@ -206,16 +206,6 @@ export default function RestaurantLogin() {
             </button>
           </form>
 
-          {/* Phone login hint - mobile */}
-          <div className="mt-4 md:hidden">
-            <div className="relative mb-3">
-              <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-slate-200" /></div>
-              <div className="relative flex justify-center"><span className="bg-white px-3 text-xs text-slate-400">Or</span></div>
-            </div>
-            <button className="w-full text-center text-sm text-emerald-700 font-medium">
-              Sign in with phone number
-            </button>
-          </div>
 
           {/* Create account link */}
           <p className="mt-4 text-center text-sm text-slate-600 md:text-left">

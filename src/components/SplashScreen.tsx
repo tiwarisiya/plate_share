@@ -10,7 +10,7 @@ export default function SplashScreen() {
   const [selectedRole, setSelectedRole] = useState<"shelter" | "restaurant">("shelter");
 
   const handleGetStarted = () => {
-    router.push(selectedRole === "restaurant" ? "/restaurant" : "/shelter");
+    router.push(selectedRole === "restaurant" ? "/restaurant/login" : "/shelter/login");
   };
 
   return (
@@ -21,7 +21,7 @@ export default function SplashScreen() {
         <header className="flex items-center justify-between px-1 pb-4">
           <div className="flex items-center gap-2">
             <span className="text-lg">🍽️</span>
-            <span className="text-base font-bold text-slate-900">SharePlate</span>
+            <span className="text-base font-bold text-slate-900">PlateShare</span>
           </div>
           <button className="text-sm text-slate-500">Skip</button>
         </header>
@@ -40,7 +40,7 @@ export default function SplashScreen() {
 
         {/* Welcome text */}
         <div className="mb-5 text-center">
-          <h1 className="text-2xl font-bold text-slate-900">Welcome to SharePlate</h1>
+          <h1 className="text-2xl font-bold text-slate-900">Welcome to PlateShare</h1>
           <p className="mt-2 text-sm text-slate-600">
             Connect shelters with nearby restaurants to redistribute surplus food quickly and safely.
           </p>

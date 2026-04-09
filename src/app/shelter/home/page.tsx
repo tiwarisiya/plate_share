@@ -15,8 +15,8 @@ import { Sidebar } from "@/components/ui/sidebar";
 import { MobileHeader, MobileBottomNav } from "@/components/ui/mobile-nav";
 import { Button } from "@/components/ui/button";
 
-type Tab = "requests" | "notifications" | "settings";
-type RequestViewFilter = "active" | "all";
+type Tab = "requests" | "chats" | "notifications" | "settings";
+type RequestViewFilter = "active" | "all" | "open" | "matched" | "completed";
 
 type SettingsTab = "account" | "location" | "security";
 
@@ -152,7 +152,7 @@ export default function ShelterHomePage() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<Tab>("requests");
   const [activeSettingsTab, setActiveSettingsTab] = useState<SettingsTab>("account");
-  const [requestView, setRequestView] = useState<RequestViewFilter>("active");
+  const [requestView, setRequestView] = useState<RequestViewFilter>("open");
   const [loading, setLoading] = useState(true);
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
@@ -813,10 +813,13 @@ export default function ShelterHomePage() {
     [requests]
   );
 
-  const visibleRequests = useMemo(
-    () => (requestView === "active" ? activeRequests : requests),
-    [activeRequests, requestView, requests]
-  );
+  const visibleRequests = useMemo(() => {
+    if (requestView === "active") return activeRequests;
+    if (requestView === "open") return requests.filter((r) => r.status === "open" || r.status === "responded");
+    if (requestView === "matched") return requests.filter((r) => r.status === "matched");
+    if (requestView === "completed") return requests.filter((r) => r.status === "completed" || r.status === "fulfilled" || r.status === "cancelled");
+    return requests;
+  }, [activeRequests, requestView, requests]);
 
   const getResponseState = (row: RequestRow): string => {
     const responses = responsesByRequest[row.id] || [];
@@ -841,16 +844,10 @@ export default function ShelterHomePage() {
   const navItems = useMemo(
     () => [
       { id: "requests", label: "Requests", icon: "📋", onClick: () => setActiveTab("requests") },
-      {
-        id: "notifications",
-        label: "Notifications",
-        icon: "🔔",
-        onClick: () => setActiveTab("notifications"),
-        count: notifications.length,
-      },
+      { id: "chats", label: "Chats", icon: "💬", onClick: () => setActiveTab("chats"), count: chatInboxItems.length },
       { id: "settings", label: "Settings", icon: "⚙️", onClick: () => setActiveTab("settings") },
     ],
-    [notifications.length]
+    [chatInboxItems.length, notifications.length]
   );
 
   const handleSignOut = async () => {
@@ -967,11 +964,17 @@ export default function ShelterHomePage() {
       <main className="flex-1 px-4 pt-[72px] pb-20 md:px-6 md:py-6 md:pt-6 md:pb-6">
         <div className="mx-auto max-w-7xl">
           <div className="mb-4">
-            <h1 className="text-2xl font-semibold text-slate-900">{activeTab === "settings" ? "Shelter Profile" : "Shelter Request Management"}</h1>
-            <p className="text-sm text-slate-600">
+            <h1 className="text-lg font-semibold text-slate-900 md:text-2xl">
+              {activeTab === "settings" ? "Shelter Profile" : activeTab === "chats" ? "Chats" : activeTab === "notifications" ? "Notifications" : "Shelter Request Management"}
+            </h1>
+            <p className="text-xs text-slate-600 md:text-sm">
               {activeTab === "settings"
                 ? "Manage account, location, and security controls."
-                : "Create requests, review restaurant responses, and manage fulfillment states."}
+                : activeTab === "chats"
+                ? "Conversations with restaurants on matched requests."
+                : activeTab === "notifications"
+                ? "Track matching updates and incoming chat activity."
+                : "Create requests, review responses, and manage fulfillment."}
             </p>
           </div>
 
@@ -979,27 +982,28 @@ export default function ShelterHomePage() {
 
           {activeTab === "requests" ? (
             <div className="flex flex-col gap-4 md:grid md:grid-cols-12">
-              {/* Mobile: Create Request + nearby banner */}
+              {/* Mobile: Tappable stats tiles + create */}
               <div className="md:hidden space-y-3">
-                <Button className="w-full rounded-full text-base font-semibold" onClick={() => setShowCreateForm(true)}>+ Create Request</Button>
-
-                {/* Nearby restaurants banner */}
-                <div className="flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3">
-                  <span className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-600 text-white text-sm">📍</span>
-                  <div className="flex-1">
-                    <p className="text-sm font-medium text-emerald-900">Nearby restaurants available</p>
-                    <p className="text-xs text-emerald-700">Live availability nearby</p>
-                  </div>
-                  <button className="text-xs font-medium text-emerald-700">Map Toggle</button>
+                {/* Tappable stats tiles */}
+                <div className="grid grid-cols-3 gap-3">
+                  <button onClick={() => setRequestView("open")} className={`rounded-xl p-3 text-center transition ${requestView === "open" ? "border-2 border-emerald-600 bg-emerald-50" : "border border-slate-200 bg-white"}`}>
+                    <p className={`text-2xl font-bold ${requestView === "open" ? "text-emerald-700" : "text-slate-900"}`}>{requests.filter((r) => r.status === "open" || r.status === "responded").length}</p>
+                    <p className="text-[11px] text-slate-500">Open<br />Requests</p>
+                  </button>
+                  <button onClick={() => setRequestView("matched")} className={`rounded-xl p-3 text-center transition ${requestView === "matched" ? "border-2 border-emerald-600 bg-emerald-50" : "border border-slate-200 bg-white"}`}>
+                    <p className={`text-2xl font-bold ${requestView === "matched" ? "text-emerald-700" : "text-slate-900"}`}>{requests.filter((r) => r.status === "matched").length}</p>
+                    <p className="text-[11px] text-slate-500">Matched</p>
+                  </button>
+                  <button onClick={() => setRequestView("completed")} className={`rounded-xl p-3 text-center transition ${requestView === "completed" ? "border-2 border-emerald-600 bg-emerald-50" : "border border-slate-200 bg-white"}`}>
+                    <p className={`text-2xl font-bold ${requestView === "completed" ? "text-emerald-700" : "text-slate-900"}`}>{requests.filter((r) => r.status === "completed" || r.status === "fulfilled" || r.status === "cancelled").length}</p>
+                    <p className="text-[11px] text-slate-500">Completed</p>
+                  </button>
                 </div>
 
-                {/* Active & Recent heading */}
+                {/* Section heading with create button */}
                 <div className="flex items-center justify-between">
-                  <p className="text-sm font-semibold text-slate-900">Active &amp; Recent Requests</p>
-                  <div className="flex gap-2">
-                    <Button size="sm" variant={requestView === "active" ? "primary" : "secondary"} className="rounded-full" onClick={() => setRequestView("active")}>Active ({activeRequests.length})</Button>
-                    <Button size="sm" variant={requestView === "all" ? "primary" : "secondary"} className="rounded-full" onClick={() => setRequestView("all")}>All ({requests.length})</Button>
-                  </div>
+                  <p className="text-sm font-semibold text-slate-900">Your Requests</p>
+                  <button className="rounded-full bg-emerald-800 px-4 py-2 text-xs font-semibold text-white" onClick={() => setShowCreateForm(true)}>+ Create</button>
                 </div>
               </div>
 
@@ -1082,8 +1086,8 @@ export default function ShelterHomePage() {
                 </form>
               </section>
 
-              <section className="col-span-12 rounded border border-slate-200 bg-white p-0 lg:col-span-8">
-                <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
+              <section className="col-span-12 rounded-xl border border-slate-200 bg-white p-0 lg:col-span-8 md:rounded">
+                <div className="hidden md:flex items-center justify-between border-b border-slate-200 px-4 py-3">
                   <p className="text-sm font-medium text-slate-800">Requests</p>
                   <div className="flex items-center gap-2">
                     <Button size="sm" variant={requestView === "active" ? "primary" : "secondary"} onClick={() => setRequestView("active")}>Active ({activeRequests.length})</Button>
@@ -1152,47 +1156,40 @@ export default function ShelterHomePage() {
                           </div>
                         </div>
 
-                        {/* Mobile: Rich request card (template design) */}
+                        {/* Mobile: Rich request card */}
                         <div className="md:hidden">
                           <div className="flex gap-3">
                             {/* Request icon */}
-                            <div className="h-14 w-14 shrink-0 rounded-xl bg-amber-100 flex items-center justify-center text-2xl">
+                            <div className="h-14 w-14 shrink-0 rounded-xl bg-emerald-100 flex items-center justify-center text-2xl">
                               🍽️
                             </div>
                             <div className="flex-1 min-w-0">
                               <div className="flex items-start justify-between gap-2">
-                                <p className="font-semibold text-slate-900 truncate">{row.title}</p>
-                                <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase ${
-                                  row.status === "matched" ? "bg-emerald-100 text-emerald-800" :
-                                  row.status === "completed" || row.status === "fulfilled" ? "bg-blue-100 text-blue-800" :
-                                  row.status === "cancelled" ? "bg-slate-100 text-slate-600" :
-                                  "bg-amber-100 text-amber-800"
-                                }`}>{mapShelterStatusForUi(row.status)}</span>
+                                <div className="min-w-0">
+                                  <p className="font-semibold text-slate-900 truncate">{row.title}</p>
+                                  <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase ${
+                                    row.status === "matched" ? "bg-emerald-100 text-emerald-800" :
+                                    row.status === "completed" || row.status === "fulfilled" ? "bg-blue-100 text-blue-800" :
+                                    row.status === "cancelled" ? "bg-slate-100 text-slate-600" :
+                                    "bg-amber-100 text-amber-800"
+                                  }`}>{mapShelterStatusForUi(row.status)}</span>
+                                </div>
+                                <span className="shrink-0 text-xs text-slate-500">{row.quantity || "-"} servings</span>
                               </div>
-                              <p className="text-xs text-slate-500">{row.request_type || "General"} • {row.quantity || "-"} servings</p>
-                              <p className="mt-0.5 text-xs text-slate-500">Pickup: {row.pickup_window || "-"}</p>
-                              {/* Response state badge */}
-                              <div className="mt-1">
-                                <span className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] font-medium ${
-                                  hasPendingResponses
-                                    ? "border-slate-300 bg-slate-100 text-slate-700"
-                                    : row.status === "matched"
-                                      ? "border-emerald-300 bg-emerald-50 text-emerald-700"
-                                      : "border-slate-300 bg-slate-50 text-slate-700"
-                                }`}>{responseState}</span>
-                              </div>
+                              <p className="mt-1 text-xs text-slate-500">{row.request_type || "General"} • Pickup: {row.pickup_window || "-"}</p>
+                              <p className="mt-0.5 text-xs text-slate-600">{responseState}</p>
                             </div>
                           </div>
                           {/* Action buttons row */}
                           <div className="mt-2 flex gap-2 pl-[68px]">
                             {(canEditCoreRequestFields(row.status) || canEditPickupWindow(row.status)) && (
-                              <Button size="sm" variant="secondary" className="rounded-full" onClick={() => startEdit(row)}>Edit</Button>
+                              <button className="rounded-full border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700" onClick={() => startEdit(row)}>Edit</button>
                             )}
                             {row.status === "open" || row.status === "responded" ? (
-                              <Button size="sm" variant="danger" className="rounded-full" onClick={() => void updateRequestStatus(row.id, "cancelled")}>Cancel</Button>
+                              <button className="rounded-full border border-red-300 bg-white px-3 py-1.5 text-xs font-medium text-red-700" onClick={() => void updateRequestStatus(row.id, "cancelled")}>Cancel</button>
                             ) : null}
                             {row.status === "matched" ? (
-                              <Button size="sm" variant="primary" className="rounded-full" onClick={() => void updateRequestStatus(row.id, "completed")}>Complete</Button>
+                              <button className="rounded-full bg-emerald-800 px-3 py-1.5 text-xs font-medium text-white" onClick={() => void updateRequestStatus(row.id, "completed")}>Complete</button>
                             ) : null}
                             {row.status === "completed" || row.status === "fulfilled" ? (
                               <span className="flex items-center text-xs text-emerald-700 font-medium">Delivered ✓</span>
@@ -1285,8 +1282,41 @@ export default function ShelterHomePage() {
                 )}
               </section>
             </div>
+          ) : activeTab === "chats" ? (
+            <section className="rounded-xl border border-slate-200 bg-white p-0 md:rounded">
+              <div className="px-4 py-3 border-b border-slate-200">
+                <p className="text-sm font-semibold text-slate-900">Matched Chats</p>
+                <p className="text-xs text-slate-500">Conversations with restaurants on matched requests</p>
+              </div>
+              {chatInboxItems.length === 0 ? (
+                <p className="px-4 py-6 text-sm text-slate-600">No active chats. Chats become available when a request is matched to a restaurant.</p>
+              ) : (
+                chatInboxItems.map((item) => (
+                  <button
+                    key={item.requestId}
+                    className="flex w-full items-center gap-3 border-t border-slate-200 px-4 py-3 text-left first:border-t-0 hover:bg-slate-50 transition"
+                    onClick={() => router.push(`/shelter/chat/${item.requestId}`)}
+                  >
+                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-lg">
+                      🍽️
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-sm font-semibold text-slate-900 truncate">{item.partnerName}</p>
+                        <p className="shrink-0 text-[10px] text-slate-400">{item.timestamp}</p>
+                      </div>
+                      <p className="text-xs text-slate-500 truncate">{item.requestTitle}</p>
+                      <p className="mt-0.5 text-xs text-slate-600 truncate">{item.preview}</p>
+                    </div>
+                  </button>
+                ))
+              )}
+            </section>
           ) : activeTab === "notifications" ? (
-            <section className="rounded border border-slate-200 bg-white p-0">
+            <section className="rounded-xl border border-slate-200 bg-white p-0 md:rounded">
+              <div className="px-4 py-3 border-b border-slate-200 md:hidden">
+                <p className="text-sm font-semibold text-slate-900">Notifications</p>
+              </div>
               {notifications.length === 0 ? (
                 <p className="px-4 py-6 text-sm text-slate-600">No notifications yet.</p>
               ) : (
