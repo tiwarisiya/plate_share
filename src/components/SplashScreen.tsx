@@ -9,7 +9,7 @@ export default function SplashScreen() {
   const router = useRouter();
 
   return (
-    <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_#dcfce7_0%,_#f0fdfa_40%,_#f8fafc_72%)] px-4 py-8 sm:px-6 lg:px-8">
+    <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_#dcfce7_0%,_#f0fdfa_40%,_#f8fafc_72%)] px-4 py-4 sm:px-6 sm:py-8 lg:px-8">
       <main className="mx-auto max-w-6xl">
         <Card className="overflow-hidden border-emerald-100 bg-white/95 shadow-lg shadow-emerald-100/40 backdrop-blur-sm">
           <div className="grid min-h-0 lg:min-h-[680px] grid-cols-1 lg:grid-cols-2">
@@ -17,21 +17,21 @@ export default function SplashScreen() {
               <div className="flex flex-col items-center lg:items-start">
                 <Image src="/PlateShare_Logo.png" alt="Plate Share logo" width={900} height={938} className="h-40 sm:h-52 lg:h-64 w-auto" priority />
 
-                <div className="mt-8 w-full space-y-4">
-                  <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-4">
-                    <p className="text-lg font-semibold text-slate-800">Match live donation requests quickly</p>
+                <div className="mt-4 sm:mt-8 w-full space-y-3 sm:space-y-4">
+                  <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-3 sm:p-4">
+                    <p className="text-base sm:text-lg font-semibold text-slate-800">Match live donation requests quickly</p>
                   </div>
-                  <div className="rounded-xl border border-cyan-200 bg-cyan-50/70 p-4">
-                    <p className="text-lg font-semibold text-slate-800">Coordinate pickups in one place</p>
+                  <div className="rounded-xl border border-cyan-200 bg-cyan-50/70 p-3 sm:p-4">
+                    <p className="text-base sm:text-lg font-semibold text-slate-800">Coordinate pickups in one place</p>
                   </div>
-                  <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-4">
-                    <p className="text-lg font-semibold text-slate-800">Track every request end to end</p>
+                  <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-3 sm:p-4">
+                    <p className="text-base sm:text-lg font-semibold text-slate-800">Track every request end to end</p>
                   </div>
                 </div>
               </div>
             </section>
 
-            <section className="flex items-center justify-center bg-gradient-to-b from-white to-emerald-50/30 p-6 sm:p-10">
+            <section className="flex items-center justify-center bg-gradient-to-b from-white to-emerald-50/30 p-4 sm:p-6 lg:p-10">
               <div className="w-full max-w-md space-y-4">
                 <Button className="h-14 w-full text-lg" onClick={() => router.push("/restaurant")}>Continue as Restaurant</Button>
                 <Button variant="secondary" className="h-14 w-full text-lg" onClick={() => router.push("/shelter")}>Continue as Shelter</Button>
