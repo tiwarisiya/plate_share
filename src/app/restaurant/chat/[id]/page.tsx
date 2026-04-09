@@ -163,11 +163,11 @@ export default function RestaurantChatPage() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 p-6">
-      <main className="mx-auto max-w-5xl rounded border border-slate-200 bg-white p-4 shadow-sm">
+    <div className="min-h-screen bg-slate-50 p-0 md:p-6">
+      <main className="mx-auto max-w-5xl rounded-none border-0 bg-white p-3 md:rounded md:border md:border-slate-200 md:p-4 md:shadow-sm">
         <div className="mb-4 flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-semibold text-slate-900">{title}</h1>
+            <h1 className="text-xl font-semibold text-slate-900 md:text-2xl">{title}</h1>
             <p className="text-sm text-slate-600">{requestTitle}</p>
           </div>
           <Button variant="secondary" onClick={() => router.push("/restaurant/home")}>
@@ -179,7 +179,7 @@ export default function RestaurantChatPage() {
           <div className="rounded border border-slate-200 bg-slate-50 p-4 text-slate-700">Loading chat...</div>
         ) : (
           <>
-            <div className="h-[500px] overflow-y-auto rounded border border-slate-200 bg-slate-50 p-3">
+            <div className="h-[calc(100dvh-180px)] md:h-[500px] overflow-y-auto rounded border border-slate-200 bg-slate-50 p-3">
               {messages.length === 0 ? (
                 <p className="text-sm text-slate-600">No messages yet. Start the conversation.</p>
               ) : (
@@ -205,7 +205,7 @@ export default function RestaurantChatPage() {
 
             {error && <p className="mt-3 text-sm font-semibold text-red-700">{error}</p>}
 
-            <form onSubmit={sendMessage} className="mt-4 flex gap-3">
+            <form onSubmit={sendMessage} className="sticky bottom-0 mt-3 flex gap-2 bg-white pt-2 md:static md:mt-4 md:gap-3 md:pt-0">
               <input
                 value={draft}
                 onChange={(e) => setDraft(e.target.value)}

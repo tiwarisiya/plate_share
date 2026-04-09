@@ -26,6 +26,7 @@ body {
   color: var(--foreground);
   font-family: var(--font-geist-sans), "Segoe UI", sans-serif;
   line-height: 1.45;
+  overflow-x: hidden;
 }
 
 /* Readability baseline: enforce minimum 16px text app-wide. */

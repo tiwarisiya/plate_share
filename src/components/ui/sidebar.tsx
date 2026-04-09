@@ -43,7 +43,7 @@ export function Sidebar({
   onFooterClick,
 }: SidebarProps) {
   return (
-    <aside className="sticky top-0 h-screen w-64 shrink-0 border-r border-slate-200 bg-white">
+    <aside className="hidden md:sticky md:top-0 md:block h-screen w-64 shrink-0 border-r border-slate-200 bg-white">
       <div className="px-4 py-5">
         <p className="text-sm font-semibold text-slate-900">{title}</p>
         <p className="text-xs text-slate-500">{subtitle}</p>
