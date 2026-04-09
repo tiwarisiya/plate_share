@@ -116,11 +116,11 @@ export default function ShelterRegisterDetailsPage() {
   };
 
   if (checkingSession) {
-    return <div className="min-h-screen bg-slate-50 px-6 py-10 text-sm text-slate-600">Checking session...</div>;
+    return <div className="min-h-screen bg-slate-50 px-4 py-6 md:px-6 md:py-10 text-sm text-slate-600">Checking session...</div>;
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 px-6 py-10">
+    <div className="min-h-screen bg-slate-50 px-4 py-6 md:px-6 md:py-10">
       <main className="mx-auto max-w-5xl">
         <div className="mb-6">
           <h1 className="text-2xl font-bold text-slate-900">Shelter Onboarding</h1>

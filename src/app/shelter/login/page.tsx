@@ -99,7 +99,7 @@ export default function ShelterLogin() {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-slate-50 px-6 py-10">
+    <div className="flex min-h-screen items-center justify-center bg-slate-50 px-4 py-6 md:px-6 md:py-10">
       <main className="w-full max-w-md rounded-lg border border-slate-200 bg-white p-6">
         <h1 className="text-xl font-semibold text-slate-900">Shelter Sign In</h1>
         <p className="mt-1 text-sm text-slate-600">Use your shelter account credentials.</p>

@@ -10,6 +10,7 @@ import {
   ShelterRequestStatus,
 } from "@/lib/flow";
 import { Sidebar } from "@/components/ui/sidebar";
+import { MobileHeader, MobileBottomNav } from "@/components/ui/mobile-nav";
 import { Button } from "@/components/ui/button";
 
 type Tab = "open" | "matched" | "completed";
@@ -348,8 +349,21 @@ export default function RestaurantHome() {
     router.replace("/");
   };
 
+  const navItems = [
+    { id: "requests", label: "Requests", icon: "📋", onClick: () => setActiveTab("requests") },
+    { id: "notifications", label: "Notifications", icon: "🔔", onClick: () => setActiveTab("notifications"), count: notifications.length },
+    { id: "profile", label: "Profile", icon: "👤", onClick: () => router.push("/restaurant/profile") },
+    { id: "settings", label: "Settings", icon: "⚙️", onClick: () => router.push("/restaurant/settings") },
+  ];
+
   return (
     <div className="flex min-h-screen bg-slate-50">
+      <MobileHeader
+        title="Plate Share"
+        subtitle="Restaurant Operations"
+        notificationCount={notifications.length}
+        onNotificationClick={() => setActiveTab("notifications")}
+      />
       <Sidebar
         title="Plate Share"
         subtitle="Restaurant Operations"
@@ -364,19 +378,15 @@ export default function RestaurantHome() {
           onClick: () => router.push(`/restaurant/chat/${item.requestId}`),
         }))}
         inboxEmptyLabel="No active matched chats"
-        items={[
-          { id: "requests", label: "Requests", icon: "📋", onClick: () => setActiveTab("requests") },
-          { id: "notifications", label: "Notifications", icon: "🔔", onClick: () => setActiveTab("notifications"), count: notifications.length },
-          { id: "profile", label: "Profile", icon: "👤", onClick: () => router.push("/restaurant/profile") },
-          { id: "settings", label: "Settings", icon: "⚙️", onClick: () => router.push("/restaurant/settings") },
-        ]}
+        items={navItems}
         footerLabel="Sign out"
         onFooterClick={() => void handleSignOut()}
       />
+      <MobileBottomNav items={navItems} activeId={activeTab} />
 
-      <main className="flex-1 px-6 py-6">
+      <main className="flex-1 px-4 pt-[72px] pb-20 md:px-6 md:py-6 md:pt-6 md:pb-6">
         <div className="mx-auto max-w-7xl">
-          <div className="mb-4 flex items-center justify-between">
+          <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div>
               <h1 className="text-2xl font-semibold text-slate-900">{activeTab === "requests" ? "Restaurant Request Queue" : "Notifications"}</h1>
               <p className="text-sm text-slate-600">
@@ -386,10 +396,10 @@ export default function RestaurantHome() {
               </p>
             </div>
             {activeTab === "requests" ? (
-              <div className="flex gap-2">
-                <Button variant={requestTab === "open" ? "primary" : "secondary"} onClick={() => setRequestTab("open")}>Open Requests</Button>
-                <Button variant={requestTab === "matched" ? "primary" : "secondary"} onClick={() => setRequestTab("matched")}>Matched</Button>
-                <Button variant={requestTab === "completed" ? "primary" : "secondary"} onClick={() => setRequestTab("completed")}>Completed</Button>
+              <div className="flex gap-2 overflow-x-auto pb-1 md:overflow-visible md:pb-0">
+                <Button variant={requestTab === "open" ? "primary" : "secondary"} className="shrink-0 whitespace-nowrap" onClick={() => setRequestTab("open")}>Open Requests</Button>
+                <Button variant={requestTab === "matched" ? "primary" : "secondary"} className="shrink-0 whitespace-nowrap" onClick={() => setRequestTab("matched")}>Matched</Button>
+                <Button variant={requestTab === "completed" ? "primary" : "secondary"} className="shrink-0 whitespace-nowrap" onClick={() => setRequestTab("completed")}>Completed</Button>
               </div>
             ) : null}
           </div>
@@ -405,7 +415,7 @@ export default function RestaurantHome() {
                 <p className="px-4 py-6 text-sm text-slate-600">No open requests available right now.</p>
               ) : (
                 <>
-                  <div className="grid grid-cols-12 gap-2 border-b border-slate-200 px-4 py-3 text-xs uppercase text-slate-500">
+                  <div className="hidden md:grid grid-cols-12 gap-2 border-b border-slate-200 px-4 py-3 text-xs uppercase text-slate-500">
                     <p className="col-span-3">Request</p>
                     <p className="col-span-2">Shelter</p>
                     <p className="col-span-2">Servings</p>
@@ -414,48 +424,82 @@ export default function RestaurantHome() {
                     <p className="col-span-1">Urgency</p>
                     <p className="col-span-12 text-[10px] text-slate-400">Includes open and responded requests, even if you already submitted a pending response.</p>
                   </div>
-                  {openRequests.map((row) => (
-                    <div key={row.id} className="border-t border-slate-200 px-4 py-3 text-sm">
-                      {(() => {
-                        const respondAction = getRespondAction(row);
-                        return (
-                          <>
-                      <div className="grid grid-cols-12 gap-2">
-                      <div className="col-span-3">
-                        <p className="font-medium text-slate-900">{row.title}</p>
-                        <p className="text-xs text-slate-500">{row.city || "City"}, {row.state || "ST"}</p>
-                      </div>
-                      <p className="col-span-2 text-slate-700">{shelterNamesById[row.shelter_id] || "Shelter"}</p>
-                      <p className="col-span-2 text-slate-700">{row.quantity || "-"}</p>
-                      <p className="col-span-2 text-slate-700">{row.food_needed || "Not specified"}</p>
-                      <p className="col-span-2 text-slate-700">{row.pickup_window || "Not set"}</p>
-                      <p className="col-span-1 capitalize text-slate-700">{row.urgency}</p>
-                      </div>
-                      <div className="mt-2 flex items-center justify-between gap-2">
-                        <div className="text-xs text-slate-600">
-                          <p>Status: {mapShelterStatusForUi(row.status)}</p>
-                          <p>Notes: {row.notes ? `${row.notes.slice(0, 100)}${row.notes.length > 100 ? "..." : ""}` : "No notes"}</p>
+                  {openRequests.map((row) => {
+                    const respondAction = getRespondAction(row);
+                    return (
+                    <div key={row.id} className="border-t border-slate-200 px-3 py-3 text-sm md:px-4">
+                      {/* Desktop table row */}
+                      <div className="hidden md:block">
+                        <div className="grid grid-cols-12 gap-2">
+                          <div className="col-span-3">
+                            <p className="font-medium text-slate-900">{row.title}</p>
+                            <p className="text-xs text-slate-500">{row.city || "City"}, {row.state || "ST"}</p>
+                          </div>
+                          <p className="col-span-2 text-slate-700">{shelterNamesById[row.shelter_id] || "Shelter"}</p>
+                          <p className="col-span-2 text-slate-700">{row.quantity || "-"}</p>
+                          <p className="col-span-2 text-slate-700">{row.food_needed || "Not specified"}</p>
+                          <p className="col-span-2 text-slate-700">{row.pickup_window || "Not set"}</p>
+                          <p className="col-span-1 capitalize text-slate-700">{row.urgency}</p>
                         </div>
-                        <div className="flex gap-2">
-                          <button className="rounded border px-3 py-1 text-xs" onClick={() => router.push(`/restaurant/donation/${row.id}`)}>
+                        <div className="mt-2 flex items-center justify-between gap-2">
+                          <div className="text-xs text-slate-600">
+                            <p>Status: {mapShelterStatusForUi(row.status)}</p>
+                            <p>Notes: {row.notes ? `${row.notes.slice(0, 100)}${row.notes.length > 100 ? "..." : ""}` : "No notes"}</p>
+                          </div>
+                          <div className="flex gap-2">
+                            <button className="rounded border px-3 py-1 text-xs" onClick={() => router.push(`/restaurant/donation/${row.id}`)}>
+                              View Details
+                            </button>
+                            {respondAction.canRespond ? (
+                              <button className="rounded bg-emerald-800 px-3 py-1 text-xs text-white" onClick={() => router.push(`/restaurant/donation/${row.id}/confirm`)}>
+                                {respondAction.label}
+                              </button>
+                            ) : (
+                              <button className="cursor-not-allowed rounded border px-3 py-1 text-xs text-slate-500" disabled>
+                                {respondAction.label}
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Mobile card */}
+                      <div className="md:hidden space-y-2">
+                        <div className="flex items-start justify-between gap-2">
+                          <div>
+                            <p className="font-medium text-slate-900">{row.title}</p>
+                            <p className="text-xs text-slate-500">{row.city || "City"}, {row.state || "ST"}</p>
+                          </div>
+                          <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium capitalize ${
+                            row.urgency === "high" ? "bg-rose-100 text-rose-800" :
+                            row.urgency === "medium" ? "bg-amber-100 text-amber-800" :
+                            "bg-slate-100 text-slate-700"
+                          }`}>{row.urgency}</span>
+                        </div>
+                        <p className="text-xs text-slate-600">{shelterNamesById[row.shelter_id] || "Shelter"}</p>
+                        <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-600">
+                          <span>Servings: {row.quantity || "-"}</span>
+                          <span>{row.food_needed || "Not specified"}</span>
+                          <span>Pickup: {row.pickup_window || "Not set"}</span>
+                        </div>
+                        <div className="flex gap-2 pt-1">
+                          <button className="flex-1 rounded border border-slate-300 px-3 py-2 text-xs" onClick={() => router.push(`/restaurant/donation/${row.id}`)}>
                             View Details
                           </button>
                           {respondAction.canRespond ? (
-                            <button className="rounded bg-emerald-800 px-3 py-1 text-xs text-white" onClick={() => router.push(`/restaurant/donation/${row.id}/confirm`)}>
+                            <button className="flex-1 rounded bg-emerald-800 px-3 py-2 text-xs text-white" onClick={() => router.push(`/restaurant/donation/${row.id}/confirm`)}>
                               {respondAction.label}
                             </button>
                           ) : (
-                            <button className="cursor-not-allowed rounded border px-3 py-1 text-xs text-slate-500" disabled>
+                            <button className="flex-1 cursor-not-allowed rounded border px-3 py-2 text-xs text-slate-500" disabled>
                               {respondAction.label}
                             </button>
                           )}
                         </div>
                       </div>
-                          </>
-                        );
-                      })()}
                     </div>
-                  ))}
+                    );
+                  })}
                 </>
               )
             ) : (

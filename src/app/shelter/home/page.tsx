@@ -12,6 +12,7 @@ import {
   ShelterRequestStatus,
 } from "@/lib/flow";
 import { Sidebar } from "@/components/ui/sidebar";
+import { MobileHeader, MobileBottomNav } from "@/components/ui/mobile-nav";
 import { Button } from "@/components/ui/button";
 
 type Tab = "requests" | "notifications" | "settings";
@@ -171,6 +172,7 @@ export default function ShelterHomePage() {
   const [zip, setZip] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [showCreateForm, setShowCreateForm] = useState(false);
 
   const loadDashboard = async (silent = false) => {
     if (!silent) {
@@ -936,6 +938,12 @@ export default function ShelterHomePage() {
 
   return (
     <div className="flex min-h-screen bg-slate-50">
+      <MobileHeader
+        title="Plate Share"
+        subtitle="Shelter Operations"
+        notificationCount={notifications.length}
+        onNotificationClick={() => setActiveTab("notifications")}
+      />
       <Sidebar
         title="Plate Share"
         subtitle="Shelter Operations"
@@ -954,8 +962,9 @@ export default function ShelterHomePage() {
         footerLabel="Sign out"
         onFooterClick={() => void handleSignOut()}
       />
+      <MobileBottomNav items={navItems} activeId={activeTab} />
 
-      <main className="flex-1 px-6 py-6">
+      <main className="flex-1 px-4 pt-[72px] pb-20 md:px-6 md:py-6 md:pt-6 md:pb-6">
         <div className="mx-auto max-w-7xl">
           <div className="mb-4">
             <h1 className="text-2xl font-semibold text-slate-900">{activeTab === "settings" ? "Shelter Profile" : "Shelter Request Management"}</h1>
@@ -969,8 +978,42 @@ export default function ShelterHomePage() {
           {statusMsg ? <p className="mb-4 text-sm text-slate-700">{statusMsg}</p> : null}
 
           {activeTab === "requests" ? (
-            <div className="grid grid-cols-12 gap-4">
-              <section className="col-span-12 rounded border border-slate-200 bg-white p-4 lg:col-span-4">
+            <div className="flex flex-col gap-4 md:grid md:grid-cols-12">
+              {/* Mobile: Create Request button */}
+              <div className="md:hidden">
+                <Button className="w-full" onClick={() => setShowCreateForm(true)}>+ Create Request</Button>
+              </div>
+
+              {/* Mobile: Create Request overlay */}
+              {showCreateForm ? (
+                <div className="fixed inset-0 z-50 md:hidden">
+                  <div className="absolute inset-0 bg-black/40" onClick={() => setShowCreateForm(false)} />
+                  <div className="absolute bottom-0 left-0 right-0 max-h-[85vh] overflow-y-auto rounded-t-2xl bg-white p-4">
+                    <div className="mb-3 flex items-center justify-between">
+                      <h2 className="text-sm font-medium text-slate-900">Create New Request</h2>
+                      <button className="rounded-md px-2 py-1 text-sm text-slate-600 hover:bg-slate-100" onClick={() => setShowCreateForm(false)}>Close</button>
+                    </div>
+                    <form onSubmit={(e) => { handleCreateRequest(e); setShowCreateForm(false); }} className="space-y-3">
+                      <input className="h-10 w-full rounded border border-slate-300 px-3 text-sm" placeholder="Request title" value={newRequest.title} onChange={(e) => setNewRequest((prev) => ({ ...prev, title: e.target.value }))} />
+                      <input className="h-10 w-full rounded border border-slate-300 px-3 text-sm" placeholder="Request type (Meal kits, Produce, Ready-to-eat)" value={newRequest.requestType} onChange={(e) => setNewRequest((prev) => ({ ...prev, requestType: e.target.value }))} />
+                      <input className="h-10 w-full rounded border border-slate-300 px-3 text-sm" placeholder="Servings needed" value={newRequest.quantity} onChange={(e) => setNewRequest((prev) => ({ ...prev, quantity: e.target.value }))} />
+                      <input className="h-10 w-full rounded border border-slate-300 px-3 text-sm" placeholder="Food types requested" value={newRequest.foodNeeded} onChange={(e) => setNewRequest((prev) => ({ ...prev, foodNeeded: e.target.value }))} />
+                      <input className="h-10 w-full rounded border border-slate-300 px-3 text-sm" placeholder="Food restrictions" value={newRequest.restrictions} onChange={(e) => setNewRequest((prev) => ({ ...prev, restrictions: e.target.value }))} />
+                      <input className="h-10 w-full rounded border border-slate-300 px-3 text-sm" placeholder="Pickup window" value={newRequest.pickupWindow} onChange={(e) => setNewRequest((prev) => ({ ...prev, pickupWindow: e.target.value }))} />
+                      <select className="h-10 w-full rounded border border-slate-300 px-3 text-sm" value={newRequest.urgency} onChange={(e) => setNewRequest((prev) => ({ ...prev, urgency: e.target.value as "low" | "medium" | "high" }))}>
+                        <option value="low">Low urgency</option>
+                        <option value="medium">Medium urgency</option>
+                        <option value="high">High urgency</option>
+                      </select>
+                      <textarea className="w-full rounded border border-slate-300 px-3 py-2 text-sm" rows={3} placeholder="Notes" value={newRequest.notes} onChange={(e) => setNewRequest((prev) => ({ ...prev, notes: e.target.value }))} />
+                      <Button type="submit" variant="primary" className="w-full">Post Request</Button>
+                    </form>
+                  </div>
+                </div>
+              ) : null}
+
+              {/* Desktop: Always-visible create form */}
+              <section className="hidden md:block col-span-12 rounded border border-slate-200 bg-white p-4 lg:col-span-4">
                 <h2 className="mb-3 text-sm font-medium text-slate-900">Create New Request</h2>
                 <form onSubmit={handleCreateRequest} className="space-y-3">
                   <input className="h-10 w-full rounded border border-slate-300 px-3 text-sm" placeholder="Request title" value={newRequest.title} onChange={(e) => setNewRequest((prev) => ({ ...prev, title: e.target.value }))} />
@@ -1029,7 +1072,7 @@ export default function ShelterHomePage() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-12 gap-2 border-b border-slate-200 px-4 py-3 text-xs uppercase text-slate-500">
+                <div className="hidden md:grid grid-cols-12 gap-2 border-b border-slate-200 px-4 py-3 text-xs uppercase text-slate-500">
                   <p className="col-span-3">Request</p>
                   <p className="col-span-1">Urgency</p>
                   <p className="col-span-2">Pickup</p>
@@ -1054,8 +1097,9 @@ export default function ShelterHomePage() {
                     const responseState = getResponseState(row);
 
                     return (
-                      <div key={row.id} className="border-t border-slate-200 px-4 py-3 text-sm">
-                        <div className="grid grid-cols-12 gap-2">
+                      <div key={row.id} className="border-t border-slate-200 px-3 py-3 text-sm md:px-4">
+                        {/* Desktop table row */}
+                        <div className="hidden md:grid grid-cols-12 gap-2">
                           <div className="col-span-3">
                             <p className="font-medium text-slate-900">{row.title}</p>
                             <p className="text-xs text-slate-500">{row.request_type || "General request"} • {row.quantity || "-"} servings</p>
@@ -1077,6 +1121,47 @@ export default function ShelterHomePage() {
                             </span>
                           </div>
                           <div className="col-span-2 flex justify-end gap-2">
+                            {(canEditCoreRequestFields(row.status) || canEditPickupWindow(row.status)) && (
+                              <Button size="sm" variant="secondary" onClick={() => startEdit(row)}>Edit</Button>
+                            )}
+                            {row.status === "open" || row.status === "responded" ? (
+                              <Button size="sm" variant="danger" onClick={() => void updateRequestStatus(row.id, "cancelled")}>Cancel</Button>
+                            ) : null}
+                            {row.status === "matched" ? (
+                              <Button size="sm" variant="primary" onClick={() => void updateRequestStatus(row.id, "completed")}>Mark Completed</Button>
+                            ) : null}
+                          </div>
+                        </div>
+
+                        {/* Mobile card */}
+                        <div className="md:hidden space-y-2">
+                          <div className="flex items-start justify-between gap-2">
+                            <div>
+                              <p className="font-medium text-slate-900">{row.title}</p>
+                              <p className="text-xs text-slate-500">{row.request_type || "General request"} • {row.quantity || "-"} servings</p>
+                            </div>
+                            <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium capitalize ${
+                              row.urgency === "high" ? "bg-rose-100 text-rose-800" :
+                              row.urgency === "medium" ? "bg-amber-100 text-amber-800" :
+                              "bg-slate-100 text-slate-700"
+                            }`}>{row.urgency}</span>
+                          </div>
+                          <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-600">
+                            <span>Pickup: {row.pickup_window || "-"}</span>
+                            <span>{mapShelterStatusForUi(row.status)}</span>
+                          </div>
+                          <span
+                            className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-medium ${
+                              hasPendingResponses
+                                ? "border-slate-300 bg-slate-100 text-slate-700"
+                                : row.status === "matched"
+                                  ? "border-emerald-300 bg-emerald-50 text-emerald-700"
+                                  : "border-slate-300 bg-slate-50 text-slate-700"
+                            }`}
+                          >
+                            {responseState}
+                          </span>
+                          <div className="flex flex-wrap gap-2 pt-1">
                             {(canEditCoreRequestFields(row.status) || canEditPickupWindow(row.status)) && (
                               <Button size="sm" variant="secondary" onClick={() => startEdit(row)}>Edit</Button>
                             )}
@@ -1190,10 +1275,10 @@ export default function ShelterHomePage() {
             </section>
           ) : (
             <section className="space-y-4">
-              <div className="flex gap-2">
-                <Button variant={activeSettingsTab === "account" ? "primary" : "secondary"} onClick={() => setActiveSettingsTab("account")}>Account</Button>
-                <Button variant={activeSettingsTab === "location" ? "primary" : "secondary"} onClick={() => setActiveSettingsTab("location")}>Location</Button>
-                <Button variant={activeSettingsTab === "security" ? "primary" : "secondary"} onClick={() => setActiveSettingsTab("security")}>Security</Button>
+              <div className="flex gap-2 overflow-x-auto pb-1 md:overflow-visible md:pb-0">
+                <Button variant={activeSettingsTab === "account" ? "primary" : "secondary"} className="shrink-0 whitespace-nowrap" onClick={() => setActiveSettingsTab("account")}>Account</Button>
+                <Button variant={activeSettingsTab === "location" ? "primary" : "secondary"} className="shrink-0 whitespace-nowrap" onClick={() => setActiveSettingsTab("location")}>Location</Button>
+                <Button variant={activeSettingsTab === "security" ? "primary" : "secondary"} className="shrink-0 whitespace-nowrap" onClick={() => setActiveSettingsTab("security")}>Security</Button>
               </div>
 
               <section className="rounded border border-slate-200 bg-white p-4 text-sm text-slate-700">

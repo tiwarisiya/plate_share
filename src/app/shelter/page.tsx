@@ -36,8 +36,8 @@ export default function ShelterEntry() {
 
   return (
     <div className="min-h-screen bg-slate-50">
-      <main className="mx-auto grid min-h-screen max-w-6xl grid-cols-12 gap-6 px-6 py-10">
-        <section className="col-span-12 rounded-lg border border-slate-200 bg-white p-8 lg:col-span-8">
+      <main className="mx-auto grid min-h-screen max-w-6xl grid-cols-1 gap-6 px-4 py-6 md:grid-cols-12 md:px-6 md:py-10">
+        <section className="col-span-1 rounded-lg border border-slate-200 bg-white p-5 md:col-span-8 md:p-8">
           <div className="mb-6 flex items-center gap-3">
             <Image src="/PlateShare_Logo.png" alt="Plate Share logo" width={154} height={160} className="h-16 w-auto" />
             <p className="text-lg font-semibold text-slate-800">Shelter Workspace</p>
@@ -64,7 +64,7 @@ export default function ShelterEntry() {
           </div>
         </section>
 
-        <section className="col-span-12 lg:col-span-4">
+        <section className="col-span-1 md:col-span-4">
           <Card>
             <CardBody className="space-y-3">
               <p className="text-lg font-medium text-slate-900">Access</p>

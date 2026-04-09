@@ -12,10 +12,10 @@ export default function SplashScreen() {
     <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_#dcfce7_0%,_#f0fdfa_40%,_#f8fafc_72%)] px-4 py-8 sm:px-6 lg:px-8">
       <main className="mx-auto max-w-6xl">
         <Card className="overflow-hidden border-emerald-100 bg-white/95 shadow-lg shadow-emerald-100/40 backdrop-blur-sm">
-          <div className="grid min-h-[680px] grid-cols-1 lg:grid-cols-2">
-            <section className="border-b border-emerald-100 bg-gradient-to-br from-white via-emerald-50/30 to-white p-8 sm:p-10 lg:border-b-0 lg:border-r">
+          <div className="grid min-h-0 lg:min-h-[680px] grid-cols-1 lg:grid-cols-2">
+            <section className="border-b border-emerald-100 bg-gradient-to-br from-white via-emerald-50/30 to-white p-5 sm:p-8 lg:p-10 lg:border-b-0 lg:border-r">
               <div className="flex flex-col items-center lg:items-start">
-                <Image src="/PlateShare_Logo.png" alt="Plate Share logo" width={900} height={938} className="h-64 w-auto" priority />
+                <Image src="/PlateShare_Logo.png" alt="Plate Share logo" width={900} height={938} className="h-40 sm:h-52 lg:h-64 w-auto" priority />
 
                 <div className="mt-8 w-full space-y-4">
                   <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-4">
