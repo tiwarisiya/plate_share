@@ -14,7 +14,7 @@ import { MobileHeader, MobileBottomNav } from "@/components/ui/mobile-nav";
 import { Button } from "@/components/ui/button";
 
 type Tab = "open" | "matched" | "completed";
-type ScreenTab = "requests" | "chats" | "notifications";
+type ScreenTab = "requests" | "chats";
 type RequestTab = "open" | "matched" | "completed";
 
 type RequestRow = {
@@ -57,14 +57,6 @@ type ChatInboxItem = {
   preview: string;
   createdAt: string;
   timestamp: string;
-  sortAt: number;
-};
-
-type NotificationItem = {
-  id: string;
-  title: string;
-  message: string;
-  createdAt: string;
   sortAt: number;
 };
 
@@ -292,56 +284,6 @@ export default function RestaurantHome() {
     return { canRespond: false, label: "Request unavailable" };
   };
 
-  const notifications = useMemo(() => {
-    const items: NotificationItem[] = [];
-
-    matchedRequests.forEach((row) => {
-      const shelterName = shelterNamesById[row.shelter_id] || "Shelter";
-      const ts = new Date(row.created_at).getTime();
-      items.push({
-        id: `matched-${row.id}`,
-        title: "Request matched",
-        message: `${row.title} is now matched with ${shelterName}.`,
-        createdAt: new Date(row.created_at).toLocaleString(),
-        sortAt: ts,
-      });
-
-      if (row.pickup_window) {
-        items.push({
-          id: `reminder-${row.id}`,
-          title: "Delivery reminder",
-          message: `${row.title} pickup window: ${row.pickup_window}.`,
-          createdAt: new Date(row.created_at).toLocaleString(),
-          sortAt: ts - 1,
-        });
-      }
-    });
-
-    completedRequests.forEach((row) => {
-      const ts = new Date(row.created_at).getTime();
-      items.push({
-        id: `completed-${row.id}`,
-        title: "Request closed",
-        message: `${row.title} has moved to ${mapShelterStatusForUi(row.status)}.`,
-        createdAt: new Date(row.created_at).toLocaleString(),
-        sortAt: ts,
-      });
-    });
-
-    chatInboxItems
-      .filter((item) => item.lastSenderRole === "shelter")
-      .forEach((item) => {
-        items.push({
-          id: `chat-${item.requestId}`,
-          title: "New chat message",
-          message: `${item.partnerName} sent a new message in ${item.requestTitle}.`,
-          createdAt: new Date(item.createdAt).toLocaleString(),
-          sortAt: new Date(item.createdAt).getTime(),
-        });
-      });
-
-    return items.sort((a, b) => b.sortAt - a.sortAt);
-  }, [matchedRequests, completedRequests, chatInboxItems, shelterNamesById]);
 
   const handleSignOut = async () => {
     const supabase = getSupabaseClient();
@@ -360,8 +302,6 @@ export default function RestaurantHome() {
       <MobileHeader
         title="Plate Share"
         subtitle="Restaurant Operations"
-        notificationCount={notifications.length}
-        onNotificationClick={() => setActiveTab("notifications")}
       />
       <Sidebar
         title="Plate Share"
@@ -389,13 +329,11 @@ export default function RestaurantHome() {
           <div className="mb-4">
             <div className="flex items-center justify-between">
               <div>
-                <h1 className="text-lg font-semibold text-slate-900 md:text-2xl">{activeTab === "requests" ? "Restaurant Request Queue" : activeTab === "chats" ? "Chats" : "Notifications"}</h1>
+                <h1 className="text-lg font-semibold text-slate-900 md:text-2xl">{activeTab === "requests" ? "Restaurant Request Queue" : "Chats"}</h1>
                 <p className="text-xs text-slate-600 md:text-sm">
                   {activeTab === "requests"
                     ? "Browse shelter requests and manage your response pipeline."
-                    : activeTab === "chats"
-                    ? "Conversations with shelters on matched requests."
-                    : "Track matching updates, reminders, and incoming chat activity."}
+                    : "Conversations with shelters on matched requests."}
                 </p>
               </div>
               {activeTab === "requests" ? (
@@ -598,24 +536,7 @@ export default function RestaurantHome() {
                 ))
               )}
             </section>
-          ) : (
-            <section className="rounded-xl border border-slate-200 bg-white p-0 md:rounded">
-              <div className="px-4 py-3 border-b border-slate-200 md:hidden">
-                <p className="text-sm font-semibold text-slate-900">Notifications</p>
-              </div>
-              {notifications.length === 0 ? (
-                <p className="px-4 py-6 text-sm text-slate-600">No notifications yet.</p>
-              ) : (
-                notifications.map((item) => (
-                  <div key={item.id} className="border-t border-slate-200 px-4 py-3 first:border-t-0">
-                    <p className="text-sm font-medium text-slate-900">{item.title}</p>
-                    <p className="text-sm text-slate-600">{item.message}</p>
-                    <p className="text-xs text-slate-500">{item.createdAt}</p>
-                  </div>
-                ))
-              )}
-            </section>
-          )}
+          ) : null}
         </div>
       </main>
     </div>

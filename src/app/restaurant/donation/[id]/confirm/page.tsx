@@ -7,6 +7,7 @@ import { getCurrentUserRole, isRestaurantProfileComplete } from "@/lib/flow";
 
 type RequestRow = {
   id: string;
+  shelter_id: string;
   title: string;
   pickup_window: string | null;
   status: "open" | "responded" | "matched" | "completed" | "fulfilled" | "cancelled";
@@ -60,7 +61,7 @@ export default function DonationConfirmPage() {
     const [{ data: requestRow, error: requestError }, { data: existingResponse, error: responseError }] = await Promise.all([
       supabase
         .from("shelter_requests")
-        .select("id, title, pickup_window, status")
+        .select("id, shelter_id, title, pickup_window, status")
         .eq("id", requestId)
         .maybeSingle(),
       supabase
@@ -164,7 +165,7 @@ export default function DonationConfirmPage() {
             donation_id: donation.id,
             proposed_pickup_window: pickupWindow || null,
             response_note: responseNote || null,
-            status: "pending",
+            status: "accepted",
           },
           { onConflict: "request_id,restaurant_id" }
         );
@@ -173,16 +174,27 @@ export default function DonationConfirmPage() {
         throw new Error(responseError.message);
       }
 
-      setExistingResponseStatus("pending");
+      const { error: requestMatchError } = await supabase
+        .from("shelter_requests")
+        .update({
+          status: "matched",
+          matched_donation_id: donation.id,
+          pickup_window: pickupWindow || request.pickup_window,
+        })
+        .eq("id", request.id)
+        .in("status", ["open", "responded"]);
+
+      if (requestMatchError) {
+        throw new Error(`Failed to match request: ${requestMatchError.message}`);
+      }
 
       await supabase
-        .from("shelter_requests")
-        .update({ status: "responded" })
-        .eq("id", request.id)
-        .eq("status", "open");
+        .from("donations")
+        .update({ status: "matched", matched_shelter_id: request.shelter_id })
+        .eq("id", donation.id);
 
-      setStatusMsg("Response submitted. Waiting for shelter acceptance.");
-      router.push(`/restaurant/donation/${request.id}`);
+      setStatusMsg("Matched! Redirecting to coordination chat...");
+      router.push(`/restaurant/home`);
     } catch (err: unknown) {
       setStatusMsg(err instanceof Error ? err.message : "Failed to submit response.");
     } finally {
@@ -215,7 +227,7 @@ export default function DonationConfirmPage() {
 
             {/* Form */}
             <div className="px-4 py-4 md:px-6 md:py-5 space-y-4">
-              <p className="text-sm text-slate-600">Submit your coordination details. The shelter will accept or reject your response.</p>
+              <p className="text-sm text-slate-600">Submit your coordination details to instantly match with this shelter request.</p>
 
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">Proposed pickup window</label>

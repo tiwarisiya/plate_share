@@ -15,7 +15,7 @@ import { Sidebar } from "@/components/ui/sidebar";
 import { MobileHeader, MobileBottomNav } from "@/components/ui/mobile-nav";
 import { Button } from "@/components/ui/button";
 
-type Tab = "requests" | "chats" | "notifications" | "settings";
+type Tab = "requests" | "chats" | "settings";
 type RequestViewFilter = "active" | "all" | "open" | "matched" | "completed";
 
 type SettingsTab = "account" | "location" | "security";
@@ -778,36 +778,6 @@ export default function ShelterHomePage() {
     await loadDashboard();
   };
 
-  const notifications = useMemo(() => {
-    const requestItems = requests
-      .filter((row) => row.status === "responded" || row.status === "matched")
-      .map((row) => ({
-        id: row.id,
-        title: row.status === "matched" ? "Request matched" : "New restaurant responses",
-        message:
-          row.status === "matched"
-            ? `${row.title} is matched and ready for coordination.`
-            : `${row.title} has pending responses to review.`,
-        createdAt: row.created_at,
-      }));
-
-    const chatItems = chatInboxItems
-      .filter((item) => item.lastSenderRole === "restaurant")
-      .map((item) => ({
-        id: `chat-${item.requestId}`,
-        title: "New chat message",
-        message: `${item.partnerName} sent a new message in ${item.requestTitle}.`,
-        createdAt: item.createdAt,
-      }));
-
-    return [...requestItems, ...chatItems]
-      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-      .map((item) => ({
-        ...item,
-        createdAt: new Date(item.createdAt).toLocaleString(),
-      }));
-  }, [requests, chatInboxItems]);
-
   const activeRequests = useMemo(
     () => requests.filter((row) => row.status === "open" || row.status === "responded" || row.status === "matched"),
     [requests]
@@ -847,7 +817,7 @@ export default function ShelterHomePage() {
       { id: "chats", label: "Chats", icon: "💬", onClick: () => setActiveTab("chats"), count: chatInboxItems.length },
       { id: "settings", label: "Settings", icon: "⚙️", onClick: () => setActiveTab("settings") },
     ],
-    [chatInboxItems.length, notifications.length]
+    [chatInboxItems.length]
   );
 
   const handleSignOut = async () => {
@@ -938,8 +908,6 @@ export default function ShelterHomePage() {
       <MobileHeader
         title="Plate Share"
         subtitle="Shelter Operations"
-        notificationCount={notifications.length}
-        onNotificationClick={() => setActiveTab("notifications")}
       />
       <Sidebar
         title="Plate Share"
@@ -965,15 +933,13 @@ export default function ShelterHomePage() {
         <div className="mx-auto max-w-7xl">
           <div className="mb-4">
             <h1 className="text-lg font-semibold text-slate-900 md:text-2xl">
-              {activeTab === "settings" ? "Shelter Profile" : activeTab === "chats" ? "Chats" : activeTab === "notifications" ? "Notifications" : "Shelter Request Management"}
+              {activeTab === "settings" ? "Shelter Profile" : activeTab === "chats" ? "Chats" : "Shelter Request Management"}
             </h1>
             <p className="text-xs text-slate-600 md:text-sm">
               {activeTab === "settings"
                 ? "Manage account, location, and security controls."
                 : activeTab === "chats"
                 ? "Conversations with restaurants on matched requests."
-                : activeTab === "notifications"
-                ? "Track matching updates and incoming chat activity."
                 : "Create requests, review responses, and manage fulfillment."}
             </p>
           </div>
@@ -1309,23 +1275,6 @@ export default function ShelterHomePage() {
                       <p className="mt-0.5 text-xs text-slate-600 truncate">{item.preview}</p>
                     </div>
                   </button>
-                ))
-              )}
-            </section>
-          ) : activeTab === "notifications" ? (
-            <section className="rounded-xl border border-slate-200 bg-white p-0 md:rounded">
-              <div className="px-4 py-3 border-b border-slate-200 md:hidden">
-                <p className="text-sm font-semibold text-slate-900">Notifications</p>
-              </div>
-              {notifications.length === 0 ? (
-                <p className="px-4 py-6 text-sm text-slate-600">No notifications yet.</p>
-              ) : (
-                notifications.map((item) => (
-                  <div key={item.id} className="border-t border-slate-200 px-4 py-3 first:border-t-0">
-                    <p className="text-sm font-medium text-slate-900">{item.title}</p>
-                    <p className="text-sm text-slate-600">{item.message}</p>
-                    <p className="text-xs text-slate-500">{item.createdAt}</p>
-                  </div>
                 ))
               )}
             </section>
