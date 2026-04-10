@@ -914,16 +914,6 @@ export default function ShelterHomePage() {
         subtitle="Shelter Operations"
         items={navItems}
         activeId={activeTab}
-        inboxAnchorId="requests"
-        inboxLabel="Chats"
-        inboxItems={chatInboxItems.map((item) => ({
-          id: item.requestId,
-          label: item.partnerName,
-          preview: item.preview,
-          timestamp: item.timestamp,
-          onClick: () => router.push(`/shelter/chat/${item.requestId}`),
-        }))}
-        inboxEmptyLabel="No active matched chats"
         footerLabel="Sign out"
         onFooterClick={() => void handleSignOut()}
       />
