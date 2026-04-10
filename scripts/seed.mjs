@@ -80,7 +80,8 @@ async function main() {
         food_type: 'Sandwiches and wraps',
         quantity: 40,
         pickup_window: 'Tomorrow 11:00 AM – 1:00 PM',
-        status: 'posted',
+        status: 'matched',
+        matched_shelter_id: s2.id,
         created_at: daysAgo(1),
       },
       {
@@ -112,7 +113,7 @@ async function main() {
   const { data: requests, error: reqErr } = await supabase
     .from('shelter_requests')
     .insert([
-      // MATCHED - will have chat
+      // MATCHED 1 - restaurant 1 matched with shelter 1 (has chat)
       {
         shelter_id: s.id,
         title: 'Hot dinner for 75 residents',
@@ -133,6 +134,28 @@ async function main() {
         state: s.state,
         zip_code: s.zip_code,
         created_at: daysAgo(2),
+      },
+      // MATCHED 2 - restaurant 2 matched with shelter 2 (has chat)
+      {
+        shelter_id: s2.id,
+        title: 'Bagged lunch for 40 shelter guests',
+        request_type: 'Sandwiches / cold food',
+        food_needed: 'Sandwiches, wraps, or individually bagged meals',
+        food_restrictions: 'Halal only. No nuts.',
+        quantity: 40,
+        pickup_window: 'Tomorrow 11:00 AM – 1:00 PM',
+        urgency: 'medium',
+        notes: 'Guests pick up lunch between 12–1 PM. Bags must be individual — no family-style platters.',
+        coordination_notes: 'Drop off at the loading dock on the north side of the building. Ask for David.',
+        status: 'matched',
+        matched_donation_id: don2.id,
+        shelter_contact_email: s2.email,
+        shelter_contact_phone: s2.phone,
+        address: s2.address,
+        city: s2.city,
+        state: s2.state,
+        zip_code: s2.zip_code,
+        created_at: daysAgo(1),
       },
       // OPEN 1 - lunch for families
       {
@@ -214,6 +237,66 @@ async function main() {
         zip_code: s.zip_code,
         created_at: daysAgo(2),
       },
+      // OPEN 5 - Thanksgiving prep
+      {
+        shelter_id: s2.id,
+        title: 'Thanksgiving meal prep – 120 servings',
+        request_type: 'Hot meals',
+        food_needed: 'Turkey, sides, or any traditional Thanksgiving-style food',
+        food_restrictions: 'Peanut-free facility. Please avoid cross-contamination.',
+        quantity: 120,
+        pickup_window: 'Thursday 10:00 AM – 12:00 PM',
+        urgency: 'high',
+        notes: 'This is our annual community Thanksgiving. We expect over 100 guests. Any contribution helps.',
+        status: 'open',
+        shelter_contact_email: s2.email,
+        shelter_contact_phone: s2.phone,
+        address: s2.address,
+        city: s2.city,
+        state: s2.state,
+        zip_code: s2.zip_code,
+        created_at: daysAgo(0.5),
+      },
+      // OPEN 6 - overnight snack bags
+      {
+        shelter_id: s.id,
+        title: 'Overnight snack bags – 35 guests',
+        request_type: 'Snacks / non-perishables',
+        food_needed: 'Granola bars, fruit, chips, or similar individually packaged snacks',
+        food_restrictions: 'No alcohol or added sugar over 15g per serving where possible.',
+        quantity: 35,
+        pickup_window: 'Any day this week, before 8:00 PM',
+        urgency: 'low',
+        notes: 'Snack bags are handed out to guests staying overnight. Individually wrapped items only.',
+        status: 'open',
+        shelter_contact_email: s.email,
+        shelter_contact_phone: s.phone,
+        address: s.address,
+        city: s.city,
+        state: s.state,
+        zip_code: s.zip_code,
+        created_at: daysAgo(4),
+      },
+      // OPEN 7 - family meal kits
+      {
+        shelter_id: s2.id,
+        title: 'Family meal kits – 20 households',
+        request_type: 'Meal kits / grocery items',
+        food_needed: 'Meal kits or grocery staples — rice, beans, canned goods, pasta',
+        food_restrictions: 'Several families are vegetarian. Please label meat products clearly.',
+        quantity: 20,
+        pickup_window: 'Wednesday or Thursday, 9:00 AM – 2:00 PM',
+        urgency: 'medium',
+        notes: 'We distribute meal kits to families transitioning out of the shelter. A little goes a long way.',
+        status: 'open',
+        shelter_contact_email: s2.email,
+        shelter_contact_phone: s2.phone,
+        address: s2.address,
+        city: s2.city,
+        state: s2.state,
+        zip_code: s2.zip_code,
+        created_at: daysAgo(1.5),
+      },
       // COMPLETED
       {
         shelter_id: s.id,
@@ -244,14 +327,14 @@ async function main() {
   }
 
   const matchedReq = requests[0];
-  const openReq1 = requests[1];
+  const matchedReq2 = requests[1];
 
   // --- Request responses ---
   console.log('Creating request responses...');
   const { error: respErr } = await supabase
     .from('request_responses')
     .insert([
-      // Accepted response on matched request
+      // Accepted response on matched request 1 (restaurant 1)
       {
         request_id: matchedReq.id,
         restaurant_id: r.id,
@@ -261,6 +344,16 @@ async function main() {
         status: 'accepted',
         created_at: daysAgo(2),
       },
+      // Accepted response on matched request 2 (restaurant 2)
+      {
+        request_id: matchedReq2.id,
+        restaurant_id: r2.id,
+        donation_id: don2.id,
+        proposed_pickup_window: 'Tomorrow 11:00 AM – 1:00 PM',
+        response_note: 'We have 40 individually wrapped halal sandwiches and wraps ready. No nuts in any items.',
+        status: 'accepted',
+        created_at: daysAgo(1),
+      },
     ]);
 
   if (respErr) {
@@ -268,9 +361,10 @@ async function main() {
     process.exit(1);
   }
 
-  // --- Chat messages for the matched request ---
+  // --- Chat messages for both matched requests ---
   console.log('Creating chat messages...');
   const chatMessages = [
+    // Chat for matched request 1 (restaurant 1 ↔ shelter 1)
     {
       request_id: matchedReq.id,
       sender_id: r.id,
@@ -313,6 +407,35 @@ async function main() {
       message: "Looking forward to it. Our residents really appreciate this. Thank you so much! 🙏",
       created_at: daysAgo(1.55),
     },
+    // Chat for matched request 2 (restaurant 2 ↔ shelter 2)
+    {
+      request_id: matchedReq2.id,
+      sender_id: r2.id,
+      sender_role: 'restaurant',
+      message: "Hello! We're all set for tomorrow. We'll have 40 individually wrapped halal sandwiches and wraps ready by 10:30 AM.",
+      created_at: daysAgo(0.9),
+    },
+    {
+      request_id: matchedReq2.id,
+      sender_id: s2.id,
+      sender_role: 'shelter',
+      message: "Great news, thank you! Please come to the loading dock on the north side. David will be there to receive the delivery.",
+      created_at: daysAgo(0.85),
+    },
+    {
+      request_id: matchedReq2.id,
+      sender_id: r2.id,
+      sender_role: 'restaurant',
+      message: "Will do. Just to confirm — no nuts in any of the items. Are there any other allergens I should flag?",
+      created_at: daysAgo(0.8),
+    },
+    {
+      request_id: matchedReq2.id,
+      sender_id: s2.id,
+      sender_role: 'shelter',
+      message: "No other restrictions beyond halal and nut-free. You're all good. See you tomorrow!",
+      created_at: daysAgo(0.75),
+    },
   ];
 
   const { error: chatErr } = await supabase.from('chat_messages').insert(chatMessages);
@@ -323,8 +446,8 @@ async function main() {
 
   console.log('✅ Seed complete!');
   console.log(`  - ${donations.length} donations created`);
-  console.log(`  - ${requests.length} shelter requests created (1 matched, 4 open, 1 fulfilled)`);
-  console.log('  - 1 request response created (accepted/matched)');
+  console.log(`  - ${requests.length} shelter requests created (2 matched, 7 open, 1 fulfilled)`);
+  console.log('  - 2 request responses created (accepted/matched)');
   console.log(`  - ${chatMessages.length} chat messages created`);
 }
 
