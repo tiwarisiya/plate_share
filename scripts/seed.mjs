@@ -212,16 +212,6 @@ async function main() {
         status: 'accepted',
         created_at: daysAgo(2),
       },
-      // Pending response on open request
-      {
-        request_id: openReq1.id,
-        restaurant_id: r2.id,
-        donation_id: don2.id,
-        proposed_pickup_window: 'Tomorrow 11:30 AM – 12:30 PM',
-        response_note: 'We have 40 individually wrapped sandwiches and wraps available. All halal, no shellfish.',
-        status: 'pending',
-        created_at: daysAgo(1),
-      },
     ]);
 
   if (respErr) {
@@ -284,8 +274,8 @@ async function main() {
 
   console.log('✅ Seed complete!');
   console.log(`  - ${donations.length} donations created`);
-  console.log(`  - ${requests.length} shelter requests created (1 matched, 2 open, 1 completed)`);
-  console.log('  - 2 request responses created (1 accepted, 1 pending)');
+  console.log(`  - ${requests.length} shelter requests created (1 matched, 2 open, 1 fulfilled)`);
+  console.log('  - 1 request response created (accepted/matched)');
   console.log(`  - ${chatMessages.length} chat messages created`);
 }
 
