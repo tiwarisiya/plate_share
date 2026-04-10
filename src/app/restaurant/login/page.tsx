@@ -95,10 +95,14 @@ export default function RestaurantLogin() {
           return;
         }
 
-        const isComplete =
-          role === "restaurant"
-            ? await isRestaurantProfileComplete(authResult.data.user.id)
-            : await isShelterProfileComplete(authResult.data.user.id);
+        if (role === "shelter") {
+          await supabase.auth.signOut();
+          setError("This account is registered as a shelter. Please use the shelter login.");
+          setLoading(false);
+          return;
+        }
+
+        const isComplete = await isRestaurantProfileComplete(authResult.data.user.id);
 
         if (!isComplete) {
           router.push(getProfileDetailsPathForRole(role));
