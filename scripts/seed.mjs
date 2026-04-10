@@ -42,6 +42,15 @@ async function main() {
   const now = new Date();
   const daysAgo = (n) => new Date(now - n * 86400000).toISOString();
 
+  // --- Update shelter profile names to realistic values ---
+  console.log('Updating shelter profile names...');
+  await supabase.from('profiles').update({ name: "St. Mary's Family Shelter" }).eq('id', s.id);
+  if (s2.id !== s.id) {
+    await supabase.from('profiles').update({ name: "Riverside Community Center" }).eq('id', s2.id);
+  }
+  s.name = "St. Mary's Family Shelter";
+  s2.name = s2.id !== s.id ? "Riverside Community Center" : s.name;
+
   // --- Donations for restaurants ---
   console.log('Creating donations...');
   const { data: donations, error: donErr } = await supabase
@@ -125,7 +134,7 @@ async function main() {
         zip_code: s.zip_code,
         created_at: daysAgo(2),
       },
-      // OPEN - available for restaurant to respond
+      // OPEN 1 - lunch for families
       {
         shelter_id: s.id,
         title: 'Lunch for 40 families',
@@ -135,7 +144,7 @@ async function main() {
         quantity: 40,
         pickup_window: 'Tomorrow 11:00 AM – 1:00 PM',
         urgency: 'medium',
-        notes: 'We distribute lunch at noon. Food should be ready to serve, no reheating equipment on-site.',
+        notes: 'We distribute lunch at noon. Food should be ready to serve — no reheating equipment on-site.',
         status: 'open',
         shelter_contact_email: s.email,
         shelter_contact_phone: s.phone,
@@ -145,7 +154,7 @@ async function main() {
         zip_code: s.zip_code,
         created_at: daysAgo(1),
       },
-      // OPEN - second shelter if available
+      // OPEN 2 - weekend soup kitchen
       {
         shelter_id: s2.id,
         title: 'Weekend soup kitchen – 60 servings',
@@ -155,7 +164,7 @@ async function main() {
         quantity: 60,
         pickup_window: 'Saturday 10:00 AM – 12:00 PM',
         urgency: 'medium',
-        notes: 'Our volunteers will be on-site from 10 AM to help unload.',
+        notes: 'Our volunteers will be on-site from 10 AM to help unload and serve.',
         status: 'open',
         shelter_contact_email: s2.email,
         shelter_contact_phone: s2.phone,
@@ -164,6 +173,46 @@ async function main() {
         state: s2.state,
         zip_code: s2.zip_code,
         created_at: daysAgo(3),
+      },
+      // OPEN 3 - urgent dinner for youth shelter
+      {
+        shelter_id: s2.id,
+        title: 'Dinner for 25 youth residents',
+        request_type: 'Hot meals',
+        food_needed: 'Any hot entree — rice dishes, chicken, pasta',
+        food_restrictions: 'No pork. Avoid very spicy food.',
+        quantity: 25,
+        pickup_window: 'Today 5:00 PM – 6:30 PM',
+        urgency: 'high',
+        notes: 'Kids eat dinner at 7 PM. We need food delivered to the side door by 6:30 PM at the latest.',
+        status: 'open',
+        shelter_contact_email: s2.email,
+        shelter_contact_phone: s2.phone,
+        address: s2.address,
+        city: s2.city,
+        state: s2.state,
+        zip_code: s2.zip_code,
+        created_at: daysAgo(0.1),
+      },
+      // OPEN 4 - weekly breakfast program
+      {
+        shelter_id: s.id,
+        title: 'Weekly breakfast – 50 servings',
+        request_type: 'Breakfast items',
+        food_needed: 'Pastries, fruit, yogurt, or any breakfast items',
+        food_restrictions: 'Nut-free required. One resident has a dairy allergy — please label dairy items.',
+        quantity: 50,
+        pickup_window: 'Friday 7:30 AM – 9:00 AM',
+        urgency: 'low',
+        notes: 'This is a recurring weekly program. Reliable partners are especially welcome.',
+        status: 'open',
+        shelter_contact_email: s.email,
+        shelter_contact_phone: s.phone,
+        address: s.address,
+        city: s.city,
+        state: s.state,
+        zip_code: s.zip_code,
+        created_at: daysAgo(2),
       },
       // COMPLETED
       {
@@ -274,7 +323,7 @@ async function main() {
 
   console.log('✅ Seed complete!');
   console.log(`  - ${donations.length} donations created`);
-  console.log(`  - ${requests.length} shelter requests created (1 matched, 2 open, 1 fulfilled)`);
+  console.log(`  - ${requests.length} shelter requests created (1 matched, 4 open, 1 fulfilled)`);
   console.log('  - 1 request response created (accepted/matched)');
   console.log(`  - ${chatMessages.length} chat messages created`);
 }
