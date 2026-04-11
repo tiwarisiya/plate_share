@@ -367,16 +367,6 @@ export default function RestaurantHome() {
         title="Plate Share"
         subtitle="Restaurant Operations"
         activeId={activeTab}
-        inboxAnchorId="requests"
-        inboxLabel="Chats"
-        inboxItems={chatInboxItems.map((item) => ({
-          id: item.requestId,
-          label: item.partnerName,
-          preview: item.preview,
-          timestamp: item.timestamp,
-          onClick: () => router.push(`/restaurant/chat/${item.requestId}`),
-        }))}
-        inboxEmptyLabel="No active matched chats"
         items={navItems}
         footerLabel="Sign out"
         onFooterClick={() => void handleSignOut()}
