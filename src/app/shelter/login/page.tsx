@@ -7,6 +7,7 @@ import {
   getCurrentUserRole,
   isShelterProfileComplete,
 } from "@/lib/flow";
+import { DemoButton } from "@/components/ui/demo-button";
 
 export default function ShelterLogin() {
   const router = useRouter();
@@ -196,6 +197,11 @@ export default function ShelterLogin() {
               Create one
             </button>
           </p>
+
+          {/* Demo button */}
+          <div className="mt-4">
+            <DemoButton role="shelter" className="w-full" />
+          </div>
 
           {/* Resend verification */}
           <div className="mt-5 border-t border-slate-200 pt-4">

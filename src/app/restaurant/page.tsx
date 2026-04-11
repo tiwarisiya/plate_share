@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardBody } from "@/components/ui/card";
 import { getSupabaseClient } from "@/lib/supabaseClient";
 import { getAuthenticatedUserDefaultRoute } from "@/lib/flow";
+import { DemoButton } from "@/components/ui/demo-button";
 
 export default function RestaurantEntry() {
   const router = useRouter();
@@ -48,6 +49,7 @@ export default function RestaurantEntry() {
           <Button variant="secondary" className="h-12 w-full rounded-xl text-sm font-semibold" onClick={() => router.push("/restaurant/register-donor")}>
             Create Donor Account
           </Button>
+          <DemoButton role="restaurant" className="w-full" />
         </div>
       </div>
 
@@ -88,6 +90,7 @@ export default function RestaurantEntry() {
               <Button variant="secondary" className="w-full text-lg" onClick={() => router.push("/restaurant/register-donor")}>
                 Create donor account
               </Button>
+              <DemoButton role="restaurant" className="w-full" />
             </CardBody>
           </Card>
         </section>

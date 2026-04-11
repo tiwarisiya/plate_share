@@ -9,6 +9,7 @@ import {
   isRestaurantProfileComplete,
   isShelterProfileComplete,
 } from "@/lib/flow";
+import { DemoButton } from "@/components/ui/demo-button";
 
 export default function RestaurantLogin() {
   const router = useRouter();
@@ -218,6 +219,11 @@ export default function RestaurantLogin() {
               Create one
             </button>
           </p>
+
+          {/* Demo button */}
+          <div className="mt-4">
+            <DemoButton role="restaurant" className="w-full" />
+          </div>
 
           {/* Resend verification */}
           <div className="mt-5 border-t border-slate-200 pt-4">
