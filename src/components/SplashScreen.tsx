@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import React, { useState } from "react";
 import { Button } from "./ui/button";
 import { Card } from "./ui/card";
+import { DemoButton } from "./ui/demo-button";
 
 export default function SplashScreen() {
   const router = useRouter();
@@ -23,7 +24,7 @@ export default function SplashScreen() {
             <span className="text-lg">🍽️</span>
             <span className="text-base font-bold text-slate-900">PlateShare</span>
           </div>
-          <button className="text-sm text-slate-500">Skip</button>
+          <span />
         </header>
 
         {/* Hero image area */}
@@ -103,6 +104,15 @@ export default function SplashScreen() {
           Get Started
         </Button>
 
+        {/* Demo shortcuts */}
+        <div className="mt-4 space-y-2">
+          <p className="text-center text-xs text-slate-400">Or skip to a demo</p>
+          <div className="flex gap-2">
+            <DemoButton role="shelter" className="flex-1" />
+            <DemoButton role="restaurant" className="flex-1" />
+          </div>
+        </div>
+
         {/* Footer */}
         <p className="mt-4 text-center text-xs text-slate-400">
           Need help? Contact support
@@ -135,6 +145,13 @@ export default function SplashScreen() {
               <div className="w-full max-w-md space-y-4">
                 <Button className="h-14 w-full text-lg" onClick={() => router.push("/restaurant")}>Continue as Restaurant</Button>
                 <Button variant="secondary" className="h-14 w-full text-lg" onClick={() => router.push("/shelter")}>Continue as Shelter</Button>
+                <div className="pt-4 border-t border-slate-200">
+                  <p className="mb-3 text-center text-sm text-slate-500">Or try the demo</p>
+                  <div className="flex gap-3">
+                    <DemoButton role="restaurant" className="flex-1" />
+                    <DemoButton role="shelter" className="flex-1" />
+                  </div>
+                </div>
               </div>
             </section>
           </div>

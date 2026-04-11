@@ -811,20 +811,18 @@ export default function ShelterHomePage() {
     return "Completed";
   };
 
-  const navItems = useMemo(
-    () => [
-      { id: "requests", label: "Requests", icon: "📋", onClick: () => setActiveTab("requests") },
-      { id: "chats", label: "Chats", icon: "💬", onClick: () => setActiveTab("chats"), count: chatInboxItems.length },
-      { id: "settings", label: "Settings", icon: "⚙️", onClick: () => setActiveTab("settings") },
-    ],
-    [chatInboxItems.length]
-  );
-
   const handleSignOut = async () => {
     const supabase = getSupabaseClient();
     await supabase.auth.signOut();
     router.replace("/");
   };
+
+  const navItems = [
+    { id: "requests", label: "Requests", icon: "📋", onClick: () => setActiveTab("requests") },
+    { id: "chats", label: "Chats", icon: "💬", onClick: () => setActiveTab("chats"), count: chatInboxItems.length },
+    { id: "settings", label: "Settings", icon: "⚙️", onClick: () => setActiveTab("settings") },
+    { id: "signout", label: "Sign Out", icon: "🚪", onClick: () => void handleSignOut() },
+  ];
 
   const saveAccount = async (e: React.FormEvent) => {
     e.preventDefault();

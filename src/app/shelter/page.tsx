@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardBody } from "@/components/ui/card";
 import { getSupabaseClient } from "@/lib/supabaseClient";
 import { getAuthenticatedUserDefaultRoute } from "@/lib/flow";
+import { DemoButton } from "@/components/ui/demo-button";
 
 export default function ShelterEntry() {
   const router = useRouter();
@@ -48,6 +49,7 @@ export default function ShelterEntry() {
           <Button variant="secondary" className="h-12 w-full rounded-xl text-sm font-semibold" onClick={() => router.push("/shelter/register")}>
             Create Shelter Account
           </Button>
+          <DemoButton role="shelter" className="w-full" />
         </div>
       </div>
 
@@ -86,6 +88,7 @@ export default function ShelterEntry() {
               <p className="text-lg font-medium text-slate-900">Access</p>
               <Button variant="secondary" className="w-full text-lg" onClick={() => router.push("/shelter/login")}>Sign in</Button>
               <Button className="w-full text-lg" onClick={() => router.push("/shelter/register")}>Create shelter account</Button>
+              <DemoButton role="shelter" className="w-full" />
             </CardBody>
           </Card>
         </section>
