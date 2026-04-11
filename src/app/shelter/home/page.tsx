@@ -912,8 +912,6 @@ export default function ShelterHomePage() {
         subtitle="Shelter Operations"
         items={navItems}
         activeId={activeTab}
-        footerLabel="Sign out"
-        onFooterClick={() => void handleSignOut()}
       />
       <MobileBottomNav items={navItems} activeId={activeTab} />
 

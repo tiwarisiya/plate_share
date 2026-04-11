@@ -308,8 +308,6 @@ export default function RestaurantHome() {
         subtitle="Restaurant Operations"
         activeId={activeTab}
         items={navItems}
-        footerLabel="Sign out"
-        onFooterClick={() => void handleSignOut()}
       />
       <MobileBottomNav items={navItems} activeId={activeTab} />
 
