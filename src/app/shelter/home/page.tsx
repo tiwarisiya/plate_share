@@ -1076,28 +1076,30 @@ export default function ShelterHomePage() {
                     return (
                       <div key={row.id} className="border-t border-slate-200 px-3 py-3 text-sm md:px-4">
                         {/* Desktop table row */}
-                        <div className="hidden md:grid grid-cols-12 gap-2">
-                          <div className="col-span-3">
-                            <p className="font-medium text-slate-900">{row.title}</p>
-                            <p className="text-xs text-slate-500">{row.request_type || "General request"} • {row.quantity || "-"} servings</p>
+                        <div className="hidden md:block">
+                          <div className="grid grid-cols-12 gap-2">
+                            <div className="col-span-3">
+                              <p className="font-medium text-slate-900">{row.title}</p>
+                              <p className="text-xs text-slate-500">{row.request_type || "General request"} • {row.quantity || "-"} servings</p>
+                            </div>
+                            <p className="col-span-1 capitalize text-slate-700">{row.urgency}</p>
+                            <p className="col-span-2 text-slate-700">{row.pickup_window || "-"}</p>
+                            <p className="col-span-2 text-slate-700">{mapShelterStatusForUi(row.status)}</p>
+                            <div className="col-span-4">
+                              <span
+                                className={`inline-flex max-w-full truncate rounded-full border px-2 py-0.5 text-xs font-medium ${
+                                  hasPendingResponses
+                                    ? "border-slate-300 bg-slate-100 text-slate-700"
+                                    : row.status === "matched"
+                                      ? "border-emerald-300 bg-emerald-50 text-emerald-700"
+                                      : "border-slate-300 bg-slate-50 text-slate-700"
+                                }`}
+                              >
+                                {responseState}
+                              </span>
+                            </div>
                           </div>
-                          <p className="col-span-1 capitalize text-slate-700">{row.urgency}</p>
-                          <p className="col-span-2 text-slate-700">{row.pickup_window || "-"}</p>
-                          <p className="col-span-2 text-slate-700">{mapShelterStatusForUi(row.status)}</p>
-                          <div className="col-span-2">
-                            <span
-                              className={`inline-flex max-w-full truncate rounded-full border px-2 py-0.5 text-xs font-medium ${
-                                hasPendingResponses
-                                  ? "border-slate-300 bg-slate-100 text-slate-700"
-                                  : row.status === "matched"
-                                    ? "border-emerald-300 bg-emerald-50 text-emerald-700"
-                                    : "border-slate-300 bg-slate-50 text-slate-700"
-                              }`}
-                            >
-                              {responseState}
-                            </span>
-                          </div>
-                          <div className="col-span-2 flex justify-end gap-2">
+                          <div className="mt-2 flex justify-end gap-2">
                             {(canEditCoreRequestFields(row.status) || canEditPickupWindow(row.status)) && (
                               <Button size="sm" variant="secondary" onClick={() => startEdit(row)}>Edit</Button>
                             )}
