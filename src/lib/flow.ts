@@ -2,7 +2,7 @@ import { getSupabaseClient } from "@/lib/supabaseClient";
 
 export type AppRole = "restaurant" | "shelter";
 
-export type ShelterRequestStatus = "open" | "responded" | "matched" | "completed" | "fulfilled" | "cancelled";
+export type ShelterRequestStatus = "open" | "responded" | "matched" | "completed" | "cancelled";
 
 export type ProfileRow = {
   id: string;
@@ -126,7 +126,7 @@ export function mapShelterStatusForUi(status: ShelterRequestStatus): "Pending" |
   if (status === "open") return "Pending";
   if (status === "responded") return "Responded";
   if (status === "matched") return "Matched";
-  if (status === "completed" || status === "fulfilled") return "Completed";
+  if (status === "completed") return "Completed";
   return "Cancelled";
 }
 

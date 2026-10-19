@@ -111,7 +111,7 @@ export default function RestaurantHome() {
       supabase
         .from("shelter_requests")
         .select("id, shelter_id, title, quantity, food_needed, pickup_window, urgency, notes, city, state, status, created_at, matched_donation_id")
-        .in("status", ["open", "responded", "matched", "completed", "fulfilled", "cancelled"])
+        .in("status", ["open", "responded", "matched", "completed", "cancelled"])
         .order("created_at", { ascending: false }),
       supabase
         .from("request_responses")
@@ -170,7 +170,7 @@ export default function RestaurantHome() {
     const matched = parsedRequests.filter((row) => row.status === "matched");
 
     const completed = parsedRequests.filter(
-      (row) => row.status === "completed" || row.status === "fulfilled" || row.status === "cancelled"
+      (row) => row.status === "completed" || row.status === "cancelled"
     );
 
     setOpenRequests(openQueue);
@@ -261,7 +261,7 @@ export default function RestaurantHome() {
   const getRespondAction = (row: RequestRow): { canRespond: boolean; label: string } => {
     const myResponse = myResponseByRequestId[row.id];
 
-    if (row.status === "matched" || row.status === "completed" || row.status === "fulfilled" || row.status === "cancelled") {
+    if (row.status === "matched" || row.status === "completed" || row.status === "cancelled") {
       return { canRespond: false, label: "Request unavailable" };
     }
 

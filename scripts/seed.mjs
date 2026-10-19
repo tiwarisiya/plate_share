@@ -308,7 +308,7 @@ async function main() {
         pickup_window: 'Last Monday 8:00 AM – 9:00 AM',
         urgency: 'high',
         notes: 'Early morning pickup — staff will be there from 7:45 AM.',
-        status: 'fulfilled',
+        status: 'completed',
         matched_donation_id: null,
         shelter_contact_email: s.email,
         shelter_contact_phone: s.phone,
@@ -446,7 +446,7 @@ async function main() {
 
   console.log('✅ Seed complete!');
   console.log(`  - ${donations.length} donations created`);
-  console.log(`  - ${requests.length} shelter requests created (2 matched, 7 open, 1 fulfilled)`);
+  console.log(`  - ${requests.length} shelter requests created (2 matched, 7 open, 1 completed)`);
   console.log('  - 2 request responses created (accepted/matched)');
   console.log(`  - ${chatMessages.length} chat messages created`);
 }

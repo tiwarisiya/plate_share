@@ -10,7 +10,7 @@ type RequestRow = {
   shelter_id: string;
   title: string;
   pickup_window: string | null;
-  status: "open" | "responded" | "matched" | "completed" | "fulfilled" | "cancelled";
+  status: "open" | "responded" | "matched" | "completed" | "cancelled";
 };
 
 type ExistingResponseRow = {
@@ -114,7 +114,7 @@ export default function DonationConfirmPage() {
       return;
     }
 
-    if (request.status === "matched" || request.status === "completed" || request.status === "fulfilled" || request.status === "cancelled") {
+    if (request.status === "matched" || request.status === "completed" || request.status === "cancelled") {
       setStatusMsg("Cannot respond to this request because it is no longer open.");
       return;
     }

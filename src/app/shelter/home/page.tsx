@@ -133,21 +133,6 @@ const initialRequestState: NewRequestState = {
   locationZip: "",
 };
 
-function isMissingShelterRequestsColumnError(
-  error: { code?: string; message?: string } | null,
-  column: string
-): boolean {
-  if (!error) return false;
-
-  if (error.code === "42703") return true;
-
-  // PostgREST can return schema cache misses as PGRST204 instead of SQL 42703.
-  if (error.code !== "PGRST204") return false;
-
-  const message = (error.message || "").toLowerCase();
-  return message.includes("schema cache") && message.includes(`'${column.toLowerCase()}'`);
-}
-
 export default function ShelterHomePage() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<Tab>("requests");
@@ -226,46 +211,11 @@ export default function ShelterHomePage() {
     const requestSelect =
       "id, title, request_type, quantity, food_needed, food_restrictions, pickup_window, urgency, notes, coordination_notes, status, created_at, matched_donation_id, shelter_contact_email, shelter_contact_phone, address, city, state, zip_code";
 
-    let requestRows: any[] | null = null;
-    let requestError: { code?: string; message: string } | null = null;
-
-    const withRequestType = await supabase
+    const { data: requestRows, error: requestError } = await supabase
       .from("shelter_requests")
       .select(requestSelect)
       .eq("shelter_id", user.id)
       .order("created_at", { ascending: false });
-
-    requestRows = withRequestType.data;
-    requestError = withRequestType.error;
-
-    if (isMissingShelterRequestsColumnError(requestError, "request_type")) {
-      const withoutRequestType = await supabase
-        .from("shelter_requests")
-        .select(
-          "id, title, quantity, food_needed, food_restrictions, pickup_window, urgency, notes, coordination_notes, status, created_at, matched_donation_id, shelter_contact_email, shelter_contact_phone, address, city, state, zip_code"
-        )
-        .eq("shelter_id", user.id)
-        .order("created_at", { ascending: false });
-
-      requestRows = withoutRequestType.data;
-      requestError = withoutRequestType.error;
-
-      if (
-        isMissingShelterRequestsColumnError(requestError, "shelter_contact_email") ||
-        isMissingShelterRequestsColumnError(requestError, "shelter_contact_phone")
-      ) {
-        const legacyWithoutSnapshot = await supabase
-          .from("shelter_requests")
-          .select(
-            "id, title, quantity, food_needed, food_restrictions, pickup_window, urgency, notes, coordination_notes, status, created_at, matched_donation_id, address, city, state, zip_code"
-          )
-          .eq("shelter_id", user.id)
-          .order("created_at", { ascending: false });
-
-        requestRows = legacyWithoutSnapshot.data;
-        requestError = legacyWithoutSnapshot.error;
-      }
-    }
 
     if (requestError) {
       setStatusMsg(`Failed to load requests: ${requestError.message}`);
@@ -441,7 +391,7 @@ export default function ShelterHomePage() {
     const resolvedZip = newRequest.useCustomLocation ? newRequest.locationZip || null : profile.zip_code || null;
 
     const supabase = getSupabaseClient();
-    const insertWithSnapshot = await supabase.from("shelter_requests").insert([
+    const { error } = await supabase.from("shelter_requests").insert([
       {
         shelter_id: userId,
         title: newRequest.title,
@@ -461,54 +411,6 @@ export default function ShelterHomePage() {
         status: "open",
       },
     ]);
-
-    let error = insertWithSnapshot.error;
-    if (isMissingShelterRequestsColumnError(error, "request_type")) {
-      const withoutRequestType = await supabase.from("shelter_requests").insert([
-        {
-          shelter_id: userId,
-          title: newRequest.title,
-          quantity: parsedQuantity,
-          food_needed: newRequest.foodNeeded || newRequest.title,
-          food_restrictions: newRequest.restrictions || null,
-          pickup_window: newRequest.pickupWindow,
-          urgency: newRequest.urgency,
-          notes: newRequest.notes || null,
-          shelter_contact_email: resolvedContactEmail,
-          shelter_contact_phone: resolvedContactPhone,
-          address: resolvedAddress,
-          city: resolvedCity,
-          state: resolvedState,
-          zip_code: resolvedZip,
-          status: "open",
-        },
-      ]);
-      error = withoutRequestType.error;
-    }
-
-    if (
-      isMissingShelterRequestsColumnError(error, "shelter_contact_email") ||
-      isMissingShelterRequestsColumnError(error, "shelter_contact_phone")
-    ) {
-      const legacyInsert = await supabase.from("shelter_requests").insert([
-        {
-          shelter_id: userId,
-          title: newRequest.title,
-          quantity: parsedQuantity,
-          food_needed: newRequest.foodNeeded || newRequest.title,
-          food_restrictions: newRequest.restrictions || null,
-          pickup_window: newRequest.pickupWindow,
-          urgency: newRequest.urgency,
-          notes: newRequest.notes || null,
-          address: resolvedAddress,
-          city: resolvedCity,
-          state: resolvedState,
-          zip_code: resolvedZip,
-          status: "open",
-        },
-      ]);
-      error = legacyInsert.error;
-    }
 
     if (error) {
       setStatusMsg(`Failed to create request: ${error.message}`);
@@ -575,35 +477,8 @@ export default function ShelterHomePage() {
         .eq("status", "open");
 
       if (error) {
-        if (isMissingShelterRequestsColumnError(error, "request_type")) {
-          const legacyUpdate = await supabase
-            .from("shelter_requests")
-            .update({
-              title: editState.title,
-              quantity: parsedQuantity,
-              food_needed: editState.foodNeeded || editState.title,
-              food_restrictions: editState.restrictions || null,
-              pickup_window: editState.pickupWindow,
-              urgency: editState.urgency,
-              notes: editState.notes || null,
-              shelter_contact_email: editState.contactEmail || null,
-              shelter_contact_phone: editState.contactPhone || null,
-              address: editState.locationAddress || null,
-              city: editState.locationCity || null,
-              state: editState.locationState || null,
-              zip_code: editState.locationZip || null,
-            })
-            .eq("id", row.id)
-            .eq("status", "open");
-
-          if (legacyUpdate.error) {
-            setStatusMsg(`Failed to update request: ${legacyUpdate.error.message}`);
-            return;
-          }
-        } else {
-          setStatusMsg(`Failed to update request: ${error.message}`);
-          return;
-        }
+        setStatusMsg(`Failed to update request: ${error.message}`);
+        return;
       }
     } else if (canEditPickupWindow(row.status)) {
       const { error } = await supabase
@@ -628,85 +503,13 @@ export default function ShelterHomePage() {
 
   const updateRequestStatus = async (requestId: string, nextStatus: "completed" | "cancelled") => {
     const supabase = getSupabaseClient();
+    const { error } = await supabase.rpc(nextStatus === "completed" ? "complete_request" : "cancel_request", {
+      p_request_id: requestId,
+    });
 
-    let matchedDonationId = requests.find((row) => row.id === requestId)?.matched_donation_id || null;
-
-    if (nextStatus === "completed") {
-      const completedUpdate = await supabase
-        .from("shelter_requests")
-        .update({ status: "completed" })
-        .eq("id", requestId)
-        .eq("status", "matched");
-
-      if (completedUpdate.error) {
-        // Backward compatibility for schemas that still use "fulfilled".
-        if (completedUpdate.error.code === "22P02" || completedUpdate.error.code === "23514") {
-          const fulfilledUpdate = await supabase
-            .from("shelter_requests")
-            .update({ status: "fulfilled" })
-            .eq("id", requestId)
-            .eq("status", "matched");
-
-          if (fulfilledUpdate.error) {
-            setStatusMsg(`Failed to update status: ${fulfilledUpdate.error.message}`);
-            return;
-          }
-        } else {
-          setStatusMsg(`Failed to update status: ${completedUpdate.error.message}`);
-          return;
-        }
-      }
-
-      if (!matchedDonationId) {
-        const { data: acceptedResponse, error: acceptedResponseError } = await supabase
-          .from("request_responses")
-          .select("donation_id")
-          .eq("request_id", requestId)
-          .eq("status", "accepted")
-          .maybeSingle();
-
-        if (!acceptedResponseError) {
-          matchedDonationId = acceptedResponse?.donation_id || null;
-
-          if (matchedDonationId) {
-            await supabase
-              .from("shelter_requests")
-              .update({ matched_donation_id: matchedDonationId })
-              .eq("id", requestId)
-              .is("matched_donation_id", null);
-          }
-        }
-      }
-
-      if (matchedDonationId) {
-        const { error: donationUpdateError } = await supabase
-          .from("donations")
-          .update({ status: "completed" })
-          .eq("id", matchedDonationId)
-          .eq("matched_shelter_id", userId);
-
-        if (donationUpdateError) {
-          // Backward compatibility for environments that do not yet allow "completed" on donations.
-          if (donationUpdateError.code === "22P02" || donationUpdateError.code === "23514") {
-            await supabase
-              .from("donations")
-              .update({ status: "fulfilled" })
-              .eq("id", matchedDonationId)
-              .eq("matched_shelter_id", userId);
-          }
-        }
-      }
-    } else {
-      const { error } = await supabase
-        .from("shelter_requests")
-        .update({ status: "cancelled" })
-        .eq("id", requestId)
-        .in("status", ["open", "responded"]);
-
-      if (error) {
-        setStatusMsg(`Failed to update status: ${error.message}`);
-        return;
-      }
+    if (error) {
+      setStatusMsg(`Failed to update status: ${error.message}`);
+      return;
     }
 
     setStatusMsg(`Request marked ${nextStatus}.`);
@@ -718,60 +521,14 @@ export default function ShelterHomePage() {
 
     const supabase = getSupabaseClient();
 
-    const rpcResult = await supabase.rpc("accept_request_response", {
+    const { error } = await supabase.rpc("accept_request_response", {
       p_request_id: request.id,
       p_response_id: response.id,
     });
 
-    if (rpcResult.error) {
-      const rpcMissing = rpcResult.error.code === "PGRST202" || rpcResult.error.code === "42883";
-
-      if (!rpcMissing) {
-        setStatusMsg(`Failed to accept response: ${rpcResult.error.message}`);
-        return;
-      }
-
-      // Backward-compatible fallback while database migrations or schema cache catch up.
-      const { error: requestError } = await supabase
-        .from("shelter_requests")
-        .update({
-          status: "matched",
-          matched_donation_id: response.donation_id,
-          pickup_window: response.proposed_pickup_window || request.pickup_window,
-        })
-        .eq("id", request.id)
-        .in("status", ["open", "responded"]);
-
-      if (requestError) {
-        setStatusMsg(`Failed to match request: ${requestError.message}`);
-        return;
-      }
-
-      const { error: acceptError } = await supabase
-        .from("request_responses")
-        .update({ status: "accepted" })
-        .eq("id", response.id)
-        .eq("request_id", request.id)
-        .eq("status", "pending");
-
-      if (acceptError) {
-        setStatusMsg(`Failed to accept response: ${acceptError.message}`);
-        return;
-      }
-
-      await supabase
-        .from("request_responses")
-        .update({ status: "rejected" })
-        .eq("request_id", request.id)
-        .eq("status", "pending")
-        .neq("id", response.id);
-
-      if (response.donation_id) {
-        await supabase
-          .from("donations")
-          .update({ status: "matched", matched_shelter_id: userId })
-          .eq("id", response.donation_id);
-      }
+    if (error) {
+      setStatusMsg(`Failed to accept response: ${error.message}`);
+      return;
     }
 
     setStatusMsg("Response accepted and request matched.");
@@ -787,7 +544,7 @@ export default function ShelterHomePage() {
     if (requestView === "active") return activeRequests;
     if (requestView === "open") return requests.filter((r) => r.status === "open" || r.status === "responded");
     if (requestView === "matched") return requests.filter((r) => r.status === "matched");
-    if (requestView === "completed") return requests.filter((r) => r.status === "completed" || r.status === "fulfilled" || r.status === "cancelled");
+    if (requestView === "completed") return requests.filter((r) => r.status === "completed" || r.status === "cancelled");
     return requests;
   }, [activeRequests, requestView, requests]);
 
@@ -947,7 +704,7 @@ export default function ShelterHomePage() {
                     <p className="text-[11px] text-slate-500">Matched</p>
                   </button>
                   <button onClick={() => setRequestView("completed")} className={`rounded-xl p-3 text-center transition ${requestView === "completed" ? "border-2 border-emerald-600 bg-emerald-50" : "border border-slate-200 bg-white"}`}>
-                    <p className={`text-2xl font-bold ${requestView === "completed" ? "text-emerald-700" : "text-slate-900"}`}>{requests.filter((r) => r.status === "completed" || r.status === "fulfilled" || r.status === "cancelled").length}</p>
+                    <p className={`text-2xl font-bold ${requestView === "completed" ? "text-emerald-700" : "text-slate-900"}`}>{requests.filter((r) => r.status === "completed" || r.status === "cancelled").length}</p>
                     <p className="text-[11px] text-slate-500">Completed</p>
                   </button>
                 </div>
@@ -1123,7 +880,7 @@ export default function ShelterHomePage() {
                                   <p className="font-semibold text-slate-900 truncate">{row.title}</p>
                                   <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase ${
                                     row.status === "matched" ? "bg-emerald-100 text-emerald-800" :
-                                    row.status === "completed" || row.status === "fulfilled" ? "bg-blue-100 text-blue-800" :
+                                    row.status === "completed" ? "bg-blue-100 text-blue-800" :
                                     row.status === "cancelled" ? "bg-slate-100 text-slate-600" :
                                     "bg-amber-100 text-amber-800"
                                   }`}>{mapShelterStatusForUi(row.status)}</span>
@@ -1145,7 +902,7 @@ export default function ShelterHomePage() {
                             {row.status === "matched" ? (
                               <button className="rounded-full bg-emerald-800 px-3 py-1.5 text-xs font-medium text-white" onClick={() => void updateRequestStatus(row.id, "completed")}>Complete</button>
                             ) : null}
-                            {row.status === "completed" || row.status === "fulfilled" ? (
+                            {row.status === "completed" ? (
                               <span className="flex items-center text-xs text-emerald-700 font-medium">Delivered ✓</span>
                             ) : null}
                           </div>
