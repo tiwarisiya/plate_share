@@ -137,7 +137,7 @@ export default function ShelterHomePage() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<Tab>("requests");
   const [activeSettingsTab, setActiveSettingsTab] = useState<SettingsTab>("account");
-  const [requestView, setRequestView] = useState<RequestViewFilter>("open");
+  const [requestView, setRequestView] = useState<RequestViewFilter>("active");
   const [loading, setLoading] = useState(true);
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
@@ -418,8 +418,8 @@ export default function ShelterHomePage() {
     }
 
     setNewRequest(initialRequestState);
-    setStatusMsg("Request created.");
     await loadDashboard();
+    setStatusMsg("Request created.");
   };
 
   const startEdit = (row: RequestRow) => {
@@ -497,8 +497,8 @@ export default function ShelterHomePage() {
     }
 
     setEditState(null);
-    setStatusMsg("Request updated.");
     await loadDashboard();
+    setStatusMsg("Request updated.");
   };
 
   const updateRequestStatus = async (requestId: string, nextStatus: "completed" | "cancelled") => {
@@ -512,8 +512,8 @@ export default function ShelterHomePage() {
       return;
     }
 
-    setStatusMsg(`Request marked ${nextStatus}.`);
     await loadDashboard();
+    setStatusMsg(`Request marked ${nextStatus}.`);
   };
 
   const acceptResponse = async (request: RequestRow, response: ResponseRow) => {
@@ -531,8 +531,8 @@ export default function ShelterHomePage() {
       return;
     }
 
-    setStatusMsg("Response accepted and request matched.");
     await loadDashboard();
+    setStatusMsg("Response accepted and request matched.");
   };
 
   const activeRequests = useMemo(
@@ -799,8 +799,17 @@ export default function ShelterHomePage() {
                 <div className="hidden md:flex items-center justify-between border-b border-slate-200 px-4 py-3">
                   <p className="text-sm font-medium text-slate-800">Requests</p>
                   <div className="flex items-center gap-2">
-                    <Button size="sm" variant={requestView === "active" ? "primary" : "secondary"} onClick={() => setRequestView("active")}>Active ({activeRequests.length})</Button>
-                    <Button size="sm" variant={requestView === "all" ? "primary" : "secondary"} onClick={() => setRequestView("all")}>All ({requests.length})</Button>
+                    {([
+                      ["active", "Active", activeRequests.length],
+                      ["open", "Open", requests.filter((r) => r.status === "open" || r.status === "responded").length],
+                      ["matched", "Matched", requests.filter((r) => r.status === "matched").length],
+                      ["completed", "Closed", requests.filter((r) => r.status === "completed" || r.status === "cancelled").length],
+                      ["all", "All", requests.length],
+                    ] as const).map(([view, label, count]) => (
+                      <Button key={view} size="sm" variant={requestView === view ? "primary" : "secondary"} onClick={() => setRequestView(view)}>
+                        {label} ({count})
+                      </Button>
+                    ))}
                   </div>
                 </div>
 
@@ -817,7 +826,7 @@ export default function ShelterHomePage() {
                   <p className="px-4 py-6 text-sm text-slate-600">Loading requests...</p>
                 ) : visibleRequests.length === 0 ? (
                   <p className="px-4 py-6 text-sm text-slate-600">
-                    {requestView === "active" ? "No active requests right now." : "No requests yet. Create your first request."}
+                    {requestView === "active" ? "No active requests right now." : requests.length === 0 ? "No requests yet. Create your first request." : "No requests in this view."}
                   </p>
                 ) : (
                   visibleRequests.map((row) => {
