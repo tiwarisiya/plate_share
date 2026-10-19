@@ -165,7 +165,7 @@ export default function DonationConfirmPage() {
             donation_id: donation.id,
             proposed_pickup_window: pickupWindow || null,
             response_note: responseNote || null,
-            status: "accepted",
+            status: "pending",
           },
           { onConflict: "request_id,restaurant_id" }
         );
@@ -174,27 +174,8 @@ export default function DonationConfirmPage() {
         throw new Error(responseError.message);
       }
 
-      const { error: requestMatchError } = await supabase
-        .from("shelter_requests")
-        .update({
-          status: "matched",
-          matched_donation_id: donation.id,
-          pickup_window: pickupWindow || request.pickup_window,
-        })
-        .eq("id", request.id)
-        .in("status", ["open", "responded"]);
-
-      if (requestMatchError) {
-        throw new Error(`Failed to match request: ${requestMatchError.message}`);
-      }
-
-      await supabase
-        .from("donations")
-        .update({ status: "matched", matched_shelter_id: request.shelter_id })
-        .eq("id", donation.id);
-
-      setStatusMsg("Matched! Redirecting to coordination chat...");
-      router.push(`/restaurant/home`);
+      setStatusMsg("Response sent. The shelter will review it and confirm the match.");
+      router.push(`/restaurant/donation/${request.id}`);
     } catch (err: unknown) {
       setStatusMsg(err instanceof Error ? err.message : "Failed to submit response.");
     } finally {
@@ -227,7 +208,7 @@ export default function DonationConfirmPage() {
 
             {/* Form */}
             <div className="px-4 py-4 md:px-6 md:py-5 space-y-4">
-              <p className="text-sm text-slate-600">Submit your coordination details to instantly match with this shelter request.</p>
+              <p className="text-sm text-slate-600">Submit your coordination details. The shelter reviews responses and confirms the match.</p>
 
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">Proposed pickup window</label>
