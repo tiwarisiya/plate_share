@@ -13,6 +13,15 @@ type RequestRow = {
   status: "open" | "responded" | "matched" | "completed" | "cancelled";
 };
 
+type RestaurantDefaults = {
+  cuisine: string | null;
+  default_pickup_window: string | null;
+  address: string | null;
+  city: string | null;
+  state: string | null;
+  zip_code: string | null;
+};
+
 type ExistingResponseRow = {
   proposed_pickup_window: string | null;
   response_note: string | null;
@@ -30,6 +39,14 @@ export default function DonationConfirmPage() {
   const [request, setRequest] = useState<RequestRow | null>(null);
   const [pickupWindow, setPickupWindow] = useState("");
   const [responseNote, setResponseNote] = useState("");
+  const [foodType, setFoodType] = useState("");
+  const [quantity, setQuantity] = useState("");
+  const [defaults, setDefaults] = useState<RestaurantDefaults | null>(null);
+  const [useCustomAddress, setUseCustomAddress] = useState(false);
+  const [pickupAddress, setPickupAddress] = useState("");
+  const [pickupCity, setPickupCity] = useState("");
+  const [pickupState, setPickupState] = useState("");
+  const [pickupZip, setPickupZip] = useState("");
   const [existingResponseStatus, setExistingResponseStatus] = useState<ExistingResponseRow["status"] | null>(null);
 
   const loadData = async () => {
@@ -58,7 +75,11 @@ export default function DonationConfirmPage() {
       return;
     }
 
-    const [{ data: requestRow, error: requestError }, { data: existingResponse, error: responseError }] = await Promise.all([
+    const [
+      { data: requestRow, error: requestError },
+      { data: existingResponse, error: responseError },
+      { data: profileRow },
+    ] = await Promise.all([
       supabase
         .from("shelter_requests")
         .select("id, shelter_id, title, pickup_window, status")
@@ -70,6 +91,11 @@ export default function DonationConfirmPage() {
         .eq("request_id", requestId)
         .eq("restaurant_id", user.id)
         .maybeSingle(),
+      supabase
+        .from("profiles")
+        .select("cuisine, default_pickup_window, address, city, state, zip_code")
+        .eq("id", user.id)
+        .single(),
     ]);
 
     if (requestError) {
@@ -94,8 +120,11 @@ export default function DonationConfirmPage() {
     setRequest(parsed);
 
     const response = (existingResponse as ExistingResponseRow | null) || null;
-    setPickupWindow(response?.proposed_pickup_window || parsed.pickup_window || "");
+    const restaurantDefaults = (profileRow as RestaurantDefaults | null) || null;
+    setDefaults(restaurantDefaults);
+    setPickupWindow(response?.proposed_pickup_window || parsed.pickup_window || restaurantDefaults?.default_pickup_window || "");
     setResponseNote(response?.response_note || "");
+    setFoodType(restaurantDefaults?.cuisine || "");
     setExistingResponseStatus(response?.status || null);
 
     setLoading(false);
@@ -123,52 +152,27 @@ export default function DonationConfirmPage() {
     setStatusMsg(null);
 
     try {
+      const parsedQuantity = quantity ? Number.parseInt(quantity, 10) : null;
+      if (parsedQuantity !== null && (Number.isNaN(parsedQuantity) || parsedQuantity <= 0)) {
+        throw new Error("Servings must be a positive number.");
+      }
+
+      if (useCustomAddress && (!pickupAddress || !pickupCity || !pickupState || !pickupZip)) {
+        throw new Error("Fill in the full pickup address, or use your default address.");
+      }
+
       const supabase = getSupabaseClient();
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
-      if (!user) {
-        throw new Error("Please sign in again.");
-      }
-
-      const { data: donation } = await supabase
-        .from("donations")
-        .select("id")
-        .eq("restaurant_id", user.id)
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      if (!donation) {
-        throw new Error("No donation profile found. Complete onboarding first.");
-      }
-
-      const { data: latestResponse } = await supabase
-        .from("request_responses")
-        .select("status")
-        .eq("request_id", request.id)
-        .eq("restaurant_id", user.id)
-        .maybeSingle();
-
-      const latestStatus = latestResponse?.status as ExistingResponseRow["status"] | undefined;
-      if (latestStatus === "pending" || latestStatus === "accepted") {
-        throw new Error("You already have an active response for this request.");
-      }
-
-      const { error: responseError } = await supabase
-        .from("request_responses")
-        .upsert(
-          {
-            request_id: request.id,
-            restaurant_id: user.id,
-            donation_id: donation.id,
-            proposed_pickup_window: pickupWindow || null,
-            response_note: responseNote || null,
-            status: "pending",
-          },
-          { onConflict: "request_id,restaurant_id" }
-        );
+      const { error: responseError } = await supabase.rpc("submit_request_response", {
+        p_request_id: request.id,
+        p_proposed_pickup_window: pickupWindow || null,
+        p_response_note: responseNote || null,
+        p_food_type: foodType || null,
+        p_quantity: parsedQuantity,
+        p_pickup_address: useCustomAddress ? pickupAddress : null,
+        p_pickup_city: useCustomAddress ? pickupCity : null,
+        p_pickup_state: useCustomAddress ? pickupState : null,
+        p_pickup_zip: useCustomAddress ? pickupZip : null,
+      });
 
       if (responseError) {
         throw new Error(responseError.message);
@@ -218,6 +222,49 @@ export default function DonationConfirmPage() {
                   onChange={(e) => setPickupWindow(e.target.value)}
                   placeholder="Today 16:00 - 18:00"
                 />
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-slate-700">Food you are offering</label>
+                  <input
+                    className="h-12 w-full rounded-xl border border-slate-300 px-4 text-sm md:h-10 md:rounded-md md:px-3"
+                    value={foodType}
+                    onChange={(e) => setFoodType(e.target.value)}
+                    placeholder="Prepared meals, bread, produce"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-slate-700">Servings (optional)</label>
+                  <input
+                    className="h-12 w-full rounded-xl border border-slate-300 px-4 text-sm md:h-10 md:rounded-md md:px-3"
+                    inputMode="numeric"
+                    value={quantity}
+                    onChange={(e) => setQuantity(e.target.value)}
+                    placeholder="40"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="flex items-center gap-2 text-sm text-slate-700">
+                  <input type="checkbox" checked={useCustomAddress} onChange={(e) => setUseCustomAddress(e.target.checked)} />
+                  Use a different pickup address for this offer
+                </label>
+                {useCustomAddress ? (
+                  <div className="mt-2 grid grid-cols-1 gap-2 md:grid-cols-2">
+                    <input className="h-12 w-full md:col-span-2 rounded-xl border border-slate-300 px-4 text-sm md:h-10 md:rounded-md md:px-3" value={pickupAddress} onChange={(e) => setPickupAddress(e.target.value)} placeholder="Address" />
+                    <input className="h-12 w-full rounded-xl border border-slate-300 px-4 text-sm md:h-10 md:rounded-md md:px-3" value={pickupCity} onChange={(e) => setPickupCity(e.target.value)} placeholder="City" />
+                    <div className="grid grid-cols-2 gap-2">
+                      <input className="h-12 w-full rounded-xl border border-slate-300 px-4 text-sm md:h-10 md:rounded-md md:px-3" maxLength={2} value={pickupState} onChange={(e) => setPickupState(e.target.value)} placeholder="State" />
+                      <input className="h-12 w-full rounded-xl border border-slate-300 px-4 text-sm md:h-10 md:rounded-md md:px-3" maxLength={5} value={pickupZip} onChange={(e) => setPickupZip(e.target.value)} placeholder="ZIP" />
+                    </div>
+                  </div>
+                ) : (
+                  <p className="mt-1 text-xs text-slate-500">
+                    Pickup from your default address: {defaults?.address ? `${defaults.address}, ${defaults.city || ""}, ${defaults.state || ""} ${defaults.zip_code || ""}` : "not set"}
+                  </p>
+                )}
               </div>
 
               <div>

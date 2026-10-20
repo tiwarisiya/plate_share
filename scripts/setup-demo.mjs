@@ -62,6 +62,8 @@ async function setupDemoAccount(role, email, password) {
         city: 'San Francisco',
         state: 'CA',
         zip_code: '94105',
+        cuisine: 'Prepared meals, sandwiches, fresh produce',
+        default_pickup_window: 'Mon-Fri 2:00 PM - 5:00 PM',
       }
     : {
         id: user.id,
@@ -81,23 +83,6 @@ async function setupDemoAccount(role, email, password) {
     return false;
   }
   console.log(`  Profile: ${profileData.name} ✓`);
-
-  // Restaurant needs a donation entry for complete profile
-  if (role === 'restaurant') {
-    const { error: donationError } = await supabase.from('donations').insert({
-      restaurant_id: user.id,
-      food_type: 'Prepared meals, sandwiches, fresh produce',
-      quantity: 50,
-      pickup_window: 'Mon-Fri 2:00 PM - 5:00 PM',
-      status: 'posted',
-    });
-
-    if (donationError && !donationError.message.includes('duplicate')) {
-      console.error(`  Donation failed: ${donationError.message}`);
-    } else {
-      console.log(`  Donation profile ✓`);
-    }
-  }
 
   return true;
 }

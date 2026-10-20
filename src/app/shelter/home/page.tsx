@@ -14,6 +14,7 @@ import {
 import { Sidebar } from "@/components/ui/sidebar";
 import { MobileHeader, MobileBottomNav } from "@/components/ui/mobile-nav";
 import { Button } from "@/components/ui/button";
+import { OFFER_SELECT, OfferRow, OfferSummary } from "@/components/offers/offer-summary";
 
 type Tab = "requests" | "chats" | "settings";
 type RequestViewFilter = "active" | "all" | "open" | "matched" | "completed";
@@ -51,6 +52,7 @@ type ResponseRow = {
   response_note: string | null;
   status: "pending" | "accepted" | "rejected" | "cancelled";
   created_at: string;
+  offer: OfferRow | null;
 };
 
 type ProfileRow = {
@@ -246,7 +248,7 @@ export default function ShelterHomePage() {
 
     const { data: responseRows } = await supabase
       .from("request_responses")
-      .select("id, request_id, restaurant_id, donation_id, proposed_pickup_window, response_note, status, created_at")
+      .select(`id, request_id, restaurant_id, donation_id, proposed_pickup_window, response_note, status, created_at, offer:donations(${OFFER_SELECT})`)
       .in("request_id", requestIds)
       .order("created_at", { ascending: false });
 
@@ -969,6 +971,7 @@ export default function ShelterHomePage() {
                                   <div className="min-w-0">
                                     <p className="text-sm font-medium text-slate-900">{restaurantNames[response.restaurant_id] || "Restaurant"}</p>
                                     <p className="text-xs text-slate-600">Proposed pickup: {response.proposed_pickup_window || "Not provided"}</p>
+                                    <OfferSummary offer={response.offer} />
                                     {response.response_note ? <p className="text-xs text-slate-500">{response.response_note}</p> : null}
                                   </div>
                                   <Button size="sm" variant="primary" onClick={() => void acceptResponse(row, response)}>Accept</Button>
@@ -991,6 +994,7 @@ export default function ShelterHomePage() {
                                 <p className="text-xs text-slate-700">
                                   Confirmed pickup: {acceptedResponse.proposed_pickup_window || row.pickup_window || "Not set"}
                                 </p>
+                                <OfferSummary offer={acceptedResponse.offer} />
                               </div>
                               <Button size="sm" variant="secondary" onClick={() => router.push(`/shelter/chat/${row.id}`)}>Open Chat</Button>
                             </div>

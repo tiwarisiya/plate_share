@@ -9,6 +9,7 @@ import {
   mapShelterStatusForUi,
   ShelterRequestStatus,
 } from "@/lib/flow";
+import { OFFER_SELECT, OfferRow, OfferSummary } from "@/components/offers/offer-summary";
 
 type RequestRow = {
   id: string;
@@ -40,6 +41,7 @@ type ResponseRow = {
   id: string;
   status: "pending" | "accepted" | "rejected" | "cancelled";
   proposed_pickup_window: string | null;
+  offer: OfferRow | null;
 };
 
 export default function DonationRequestDetailsPage() {
@@ -118,7 +120,7 @@ export default function DonationRequestDetailsPage() {
 
     const { data: responseRow } = await supabase
       .from("request_responses")
-      .select("id, status, proposed_pickup_window")
+      .select(`id, status, proposed_pickup_window, offer:donations(${OFFER_SELECT})`)
       .eq("request_id", requestId)
       .eq("restaurant_id", user.id)
       .maybeSingle();
@@ -329,6 +331,7 @@ export default function DonationRequestDetailsPage() {
                       <span className="text-slate-500">Proposed pickup</span>
                       <span className="font-medium text-slate-900">{myResponse.proposed_pickup_window || "Not provided"}</span>
                     </div>
+                    <OfferSummary offer={myResponse.offer} />
                   </div>
                 </div>
               ) : null}

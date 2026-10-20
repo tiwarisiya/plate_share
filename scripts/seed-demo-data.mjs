@@ -32,20 +32,12 @@ async function main() {
     state: 'CA',
     zip_code: '94704',
     email: RESTAURANT_EMAIL,
+    cuisine: 'Prepared meals, salads, soups, baked goods',
+    default_pickup_window: 'Mon-Fri 2:00 PM - 6:00 PM, Sat 12:00 PM - 3:00 PM',
   }).eq('id', restaurantId);
 
   if (rProfileErr) console.error('Restaurant profile update failed:', rProfileErr.message);
   else console.log('✓ Restaurant profile updated: Berkeley Kitchen Co-op');
-
-  // --- Update Restaurant donation ---
-  const { error: donationErr } = await rClient.from('donations').update({
-    food_type: 'Prepared meals, salads, soups, baked goods',
-    quantity: 80,
-    pickup_window: 'Mon-Fri 2:00 PM - 6:00 PM, Sat 12:00 PM - 3:00 PM',
-  }).eq('restaurant_id', restaurantId);
-
-  if (donationErr) console.error('Donation update failed:', donationErr.message);
-  else console.log('✓ Restaurant donation updated');
 
   // --- Update Shelter profile ---
   const { error: sProfileErr } = await sClient.from('profiles').update({

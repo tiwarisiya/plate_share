@@ -16,11 +16,12 @@ export default function RestaurantSettingsPage() {
   const [activeTab, setActiveTab] = useState<Tab>("account");
 
   const [userId, setUserId] = useState<string | null>(null);
-  const [donationId, setDonationId] = useState<string | null>(null);
 
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
+  const [cuisine, setCuisine] = useState("");
+  const [defaultPickupWindow, setDefaultPickupWindow] = useState("");
 
   const [address, setAddress] = useState("");
   const [city, setCity] = useState("");
@@ -63,28 +64,21 @@ export default function RestaurantSettingsPage() {
       setUserId(user.id);
       setEmail(user.email || "");
 
-      const [{ data: profileRow }, { data: donationRow }] = await Promise.all([
-        supabase.from("profiles").select("name, phone").eq("id", user.id).single(),
-        supabase
-          .from("donations")
-          .select("id, address, city, state, zip_code")
-          .eq("restaurant_id", user.id)
-          .order("created_at", { ascending: false })
-          .limit(1)
-          .single(),
-      ]);
+      const { data: profileRow } = await supabase
+        .from("profiles")
+        .select("name, phone, address, city, state, zip_code, cuisine, default_pickup_window")
+        .eq("id", user.id)
+        .single();
 
       if (profileRow) {
         setName(profileRow.name || "");
         setPhone(profileRow.phone || "");
-      }
-
-      if (donationRow) {
-        setDonationId(donationRow.id);
-        setAddress(donationRow.address || "");
-        setCity(donationRow.city || "");
-        setState(donationRow.state || "");
-        setZip(donationRow.zip_code || "");
+        setAddress(profileRow.address || "");
+        setCity(profileRow.city || "");
+        setState(profileRow.state || "");
+        setZip(profileRow.zip_code || "");
+        setCuisine(profileRow.cuisine || "");
+        setDefaultPickupWindow(profileRow.default_pickup_window || "");
       }
 
       setLoading(false);
@@ -115,7 +109,7 @@ export default function RestaurantSettingsPage() {
     const supabase = getSupabaseClient();
     const { error } = await supabase
       .from("profiles")
-      .update({ name, phone, email })
+      .update({ name, phone, email, cuisine, default_pickup_window: defaultPickupWindow || null })
       .eq("id", userId);
 
     setMsg(error ? `Failed to save account: ${error.message}` : "Account settings saved.");
@@ -123,16 +117,13 @@ export default function RestaurantSettingsPage() {
 
   const saveLocation = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!donationId) {
-      setMsg("No donation location found yet. Complete onboarding first.");
-      return;
-    }
+    if (!userId) return;
 
     const supabase = getSupabaseClient();
     const { error } = await supabase
-      .from("donations")
+      .from("profiles")
       .update({ address, city, state, zip_code: zip })
-      .eq("id", donationId);
+      .eq("id", userId);
 
     setMsg(error ? `Failed to save location: ${error.message}` : "Location settings saved.");
   };
@@ -172,7 +163,7 @@ export default function RestaurantSettingsPage() {
         <div className="mx-auto max-w-4xl">
           <div className="mb-4">
             <h1 className="text-2xl font-bold text-slate-900">Settings</h1>
-            <p className="mt-1 text-sm text-slate-600">Manage account, location, and security controls.</p>
+            <p className="mt-1 text-sm text-slate-600">Manage account, location, and security controls. Your location is the default pickup address for offers; you can override it on each response.</p>
           </div>
 
           <div className="mb-4 flex gap-2">
@@ -201,6 +192,12 @@ export default function RestaurantSettingsPage() {
                       <Input value={email} onChange={(e) => setEmail(e.target.value)} type="email" />
                     </Field>
                   </div>
+                  <Field label="Food types you usually have (cuisine)">
+                    <Input value={cuisine} onChange={(e) => setCuisine(e.target.value)} placeholder="Prepared meals, salads, packaged items" required />
+                  </Field>
+                  <Field label="Default pickup window">
+                    <Input value={defaultPickupWindow} onChange={(e) => setDefaultPickupWindow(e.target.value)} placeholder="Mon-Fri 15:00 - 18:00" />
+                  </Field>
                   <div className="md:col-span-2">
                     <Button type="submit">Save account</Button>
                   </div>

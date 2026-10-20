@@ -15,6 +15,8 @@ export type ProfileRow = {
   state: string | null;
   zip_code: string | null;
   organization_notes?: string | null;
+  cuisine?: string | null;
+  default_pickup_window?: string | null;
 };
 
 export function getDashboardPathForRole(role: AppRole): string {
@@ -48,27 +50,14 @@ export function isBaseProfileComplete(profile: ProfileRow | null): boolean {
 
 export async function isRestaurantProfileComplete(userId: string): Promise<boolean> {
   const supabase = getSupabaseClient();
-
-  const [{ data: profile }, { data: donation }] = await Promise.all([
-    supabase
-      .from("profiles")
-      .select("id, role, name, email, phone, address, city, state, zip_code")
-      .eq("id", userId)
-      .single(),
-    supabase
-      .from("donations")
-      .select("id, food_type")
-      .eq("restaurant_id", userId)
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .single(),
-  ]);
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("id, role, name, email, phone, address, city, state, zip_code, cuisine")
+    .eq("id", userId)
+    .single();
 
   const typedProfile = (profile as ProfileRow) || null;
-  const baseComplete = isBaseProfileComplete(typedProfile);
-  if (!typedProfile || typedProfile.role !== "restaurant") return false;
-
-  return Boolean(baseComplete && donation?.food_type);
+  return Boolean(typedProfile?.role === "restaurant" && isBaseProfileComplete(typedProfile) && typedProfile.cuisine);
 }
 
 export async function isShelterProfileComplete(userId: string): Promise<boolean> {

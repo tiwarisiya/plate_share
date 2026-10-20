@@ -93,24 +93,24 @@ export default function RegisterDonorDetailsPage() {
     void validateSession();
   }, [router]);
 
-  const saveDonation = async () => {
+  const saveProfile = async () => {
     const supabase = getSupabaseClient();
-    return supabase
-      .from("donations")
-      .insert([
-        {
-          restaurant_id: sessionUserId,
-          restaurant_name: formData.restaurantName,
-          address: formData.address,
-          city: formData.city,
-          state: formData.state,
-          zip_code: formData.zipCode,
-          food_type: formData.foodTypes,
-          pickup_window: formData.pickupWindow,
-          quantity: null,
-        },
-      ])
-      .select();
+    return supabase.from("profiles").upsert(
+      {
+        id: sessionUserId,
+        role: "restaurant",
+        name: formData.restaurantName,
+        phone: formData.phone,
+        address: formData.address,
+        city: formData.city,
+        state: formData.state,
+        zip_code: formData.zipCode,
+        cuisine: formData.foodTypes,
+        default_pickup_window: formData.pickupWindow || null,
+        email,
+      },
+      { onConflict: "id" }
+    );
   };
 
   const recoverSessionFromPendingSignup = async () => {
@@ -144,39 +144,18 @@ export default function RegisterDonorDetailsPage() {
     try {
       if (!sessionUserId) throw new Error("Please sign in before finishing setup.");
 
-      const supabase = getSupabaseClient();
-      const { error: profileError } = await supabase.from("profiles").upsert(
-        {
-          id: sessionUserId,
-          role: "restaurant",
-          name: formData.restaurantName,
-          phone: formData.phone,
-          address: formData.address,
-          city: formData.city,
-          state: formData.state,
-          zip_code: formData.zipCode,
-          email,
-        },
-        { onConflict: "id" }
-      );
-
-      if (profileError) throw new Error(`Failed to save account info: ${profileError.message}`);
-
-      let { data, error: insertError } = await saveDonation();
-      if (insertError && insertError.message.toLowerCase().includes("row-level security")) {
+      let { error: profileError } = await saveProfile();
+      if (profileError && profileError.message.toLowerCase().includes("row-level security")) {
         const recovered = await recoverSessionFromPendingSignup();
         if (recovered) {
-          const retry = await saveDonation();
-          data = retry.data;
-          insertError = retry.error;
+          profileError = (await saveProfile()).error;
         }
       }
 
-      if (insertError) throw new Error(`Failed to save donation details: ${insertError.message}`);
-      if (!data || data.length === 0) throw new Error("No donation record returned.");
+      if (profileError) throw new Error(`Failed to save account info: ${profileError.message}`);
 
       if (typeof window !== "undefined") sessionStorage.removeItem("pendingRestaurantSignup");
-      router.push(`/restaurant/success?id=${data[0].id}`);
+      router.push("/restaurant/success");
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Failed to complete setup.");
     } finally {
@@ -237,11 +216,11 @@ export default function RegisterDonorDetailsPage() {
                 </Field>
               </div>
 
-              <Field label="Food types offered">
+              <Field label="Food types you usually have (cuisine)">
                 <TextArea rows={4} value={formData.foodTypes} onChange={(e) => setFormData((prev) => ({ ...prev, foodTypes: e.target.value }))} placeholder="Prepared meals, salads, packaged items" required />
               </Field>
 
-              <Field label="Preferred pickup window">
+              <Field label="Default pickup window">
                 <TextArea rows={4} value={formData.pickupWindow} onChange={(e) => setFormData((prev) => ({ ...prev, pickupWindow: e.target.value }))} placeholder="Mon-Fri 15:00 - 18:00" />
               </Field>
 

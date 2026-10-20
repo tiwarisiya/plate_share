@@ -66,20 +66,11 @@ export default function RestaurantProfilePage() {
         return;
       }
 
-      const [{ data: profileRow }, { data: donationRow }] = await Promise.all([
-        supabase
-          .from("profiles")
-          .select("name, email, phone, address, city, state, zip_code")
-          .eq("id", user.id)
-          .single(),
-        supabase
-          .from("donations")
-          .select("food_type, pickup_window")
-          .eq("restaurant_id", user.id)
-          .order("created_at", { ascending: false })
-          .limit(1)
-          .single(),
-      ]);
+      const { data: profileRow } = await supabase
+        .from("profiles")
+        .select("name, email, phone, address, city, state, zip_code, cuisine, default_pickup_window")
+        .eq("id", user.id)
+        .single();
 
       setProfile({
         restaurantName: profileRow?.name || EMPTY_PROFILE.restaurantName,
@@ -89,8 +80,8 @@ export default function RestaurantProfilePage() {
         city: profileRow?.city || EMPTY_PROFILE.city,
         state: profileRow?.state || EMPTY_PROFILE.state,
         zipCode: profileRow?.zip_code || EMPTY_PROFILE.zipCode,
-        foodTypes: donationRow?.food_type || EMPTY_PROFILE.foodTypes,
-        pickupWindow: donationRow?.pickup_window || EMPTY_PROFILE.pickupWindow,
+        foodTypes: profileRow?.cuisine || EMPTY_PROFILE.foodTypes,
+        pickupWindow: profileRow?.default_pickup_window || EMPTY_PROFILE.pickupWindow,
       });
     };
 
@@ -104,7 +95,7 @@ export default function RestaurantProfilePage() {
       ["Phone", profile.phone],
       ["Address", `${profile.address}, ${profile.city}, ${profile.state} ${profile.zipCode}`],
       ["Food Types", profile.foodTypes],
-      ["Pickup Window", profile.pickupWindow],
+      ["Default Pickup Window", profile.pickupWindow],
     ],
     [profile]
   );
