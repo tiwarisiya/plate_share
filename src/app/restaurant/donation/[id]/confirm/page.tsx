@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { getSupabaseClient } from "@/lib/supabaseClient";
 import { getCurrentUserRole, isRestaurantProfileComplete } from "@/lib/flow";
 import { EMPTY_FOOD_SAFETY, FoodSafetyValue, foodSafetyColumns, validateFoodSafety } from "@/lib/food-safety";
+import { geocode } from "@/lib/geo";
 import { FoodSafetyFields } from "@/components/offers/food-safety-fields";
 import {
   EMPTY_PICKUP_ADDRESS,
@@ -168,6 +169,9 @@ export default function DonationConfirmPage() {
       const safetyError = validateFoodSafety(foodSafety);
       if (safetyError) throw new Error(safetyError);
       const safety = foodSafetyColumns(foodSafety);
+      const overrideLocation = pickupAddress.useCustom
+        ? await geocode({ address: pickupAddress.address, city: pickupAddress.city, state: pickupAddress.state, zip: pickupAddress.zip })
+        : null;
 
       const supabase = getSupabaseClient();
       const { error: responseError } = await supabase.rpc("submit_request_response", {
@@ -187,6 +191,8 @@ export default function DonationConfirmPage() {
         p_allergen_notes: safety.allergen_notes,
         p_estimated_weight_lbs: safety.estimated_weight_lbs,
         p_safety_checklist_confirmed: true,
+        p_pickup_latitude: overrideLocation?.latitude ?? null,
+        p_pickup_longitude: overrideLocation?.longitude ?? null,
       });
 
       if (responseError) {

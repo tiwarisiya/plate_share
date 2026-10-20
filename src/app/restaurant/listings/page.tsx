@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from "react";
 import { getSupabaseClient } from "@/lib/supabaseClient";
 import { EMPTY_FOOD_SAFETY, FoodSafetyValue, foodSafetyColumns, validateFoodSafety } from "@/lib/food-safety";
+import { coordinatesFor } from "@/lib/geo";
 import { LISTING_PHOTO_BUCKET, LISTING_SELECT, ListingRow, isListingExpired, listingPhotoUrl } from "@/lib/listings";
 import { RoleShell, useRoleGuard } from "@/components/ui/role-shell";
 import { Button } from "@/components/ui/button";
@@ -18,7 +19,13 @@ import {
 
 const inputClass = "h-12 w-full rounded-xl border border-slate-300 px-4 text-sm md:h-10 md:rounded-md md:px-3";
 
-type RestaurantDefaults = AddressDefaults & { name: string | null; cuisine: string | null; default_pickup_window: string | null };
+type RestaurantDefaults = AddressDefaults & {
+  name: string | null;
+  cuisine: string | null;
+  default_pickup_window: string | null;
+  latitude: number | null;
+  longitude: number | null;
+};
 
 const STATUS_LABEL: Record<ListingRow["status"], string> = {
   posted: "Available",
@@ -52,7 +59,7 @@ export default function RestaurantListingsPage() {
     const load = async () => {
       const supabase = getSupabaseClient();
       const [{ data: profileRow }, { data: rows, error }] = await Promise.all([
-        supabase.from("profiles").select("name, cuisine, default_pickup_window, address, city, state, zip_code").eq("id", userId).single(),
+        supabase.from("profiles").select("name, cuisine, default_pickup_window, address, city, state, zip_code, latitude, longitude").eq("id", userId).single(),
         supabase.from("donations").select(LISTING_SELECT).eq("restaurant_id", userId).eq("kind", "listing").order("created_at", { ascending: false }),
       ]);
 
@@ -126,6 +133,11 @@ export default function RestaurantListingsPage() {
     }
 
     const useCustom = pickupAddress.useCustom;
+    const coordinates = await coordinatesFor(
+      useCustom,
+      { address: pickupAddress.address, city: pickupAddress.city, state: pickupAddress.state, zip: pickupAddress.zip },
+      defaults
+    );
     const { error: insertError } = await supabase.from("donations").insert({
       restaurant_id: userId,
       restaurant_name: defaults.name,
@@ -141,6 +153,7 @@ export default function RestaurantListingsPage() {
       state: useCustom ? pickupAddress.state : defaults.state,
       zip_code: useCustom ? pickupAddress.zip : defaults.zip_code,
       pickup_address_override: useCustom,
+      ...coordinates,
       ...foodSafetyColumns(foodSafety),
       safety_checklist_confirmed_at: new Date().toISOString(),
     });

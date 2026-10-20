@@ -10,6 +10,7 @@ import {
   isRestaurantProfileComplete,
   isShelterProfileComplete,
 } from "@/lib/flow";
+import { geocode, GeocodeResult } from "@/lib/geo";
 import { Button } from "@/components/ui/button";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { Field, Input, TextArea } from "@/components/ui/field";
@@ -93,7 +94,7 @@ export default function RegisterDonorDetailsPage() {
     void validateSession();
   }, [router]);
 
-  const saveProfile = async () => {
+  const saveProfile = async (located: GeocodeResult | null) => {
     const supabase = getSupabaseClient();
     return supabase.from("profiles").upsert(
       {
@@ -107,6 +108,9 @@ export default function RegisterDonorDetailsPage() {
         zip_code: formData.zipCode,
         cuisine: formData.foodTypes,
         default_pickup_window: formData.pickupWindow || null,
+        latitude: located?.latitude ?? null,
+        longitude: located?.longitude ?? null,
+        geocode_source: located?.source ?? null,
         email,
       },
       { onConflict: "id" }
@@ -144,11 +148,12 @@ export default function RegisterDonorDetailsPage() {
     try {
       if (!sessionUserId) throw new Error("Please sign in before finishing setup.");
 
-      let { error: profileError } = await saveProfile();
+      const located = await geocode({ address: formData.address, city: formData.city, state: formData.state, zip: formData.zipCode });
+      let { error: profileError } = await saveProfile(located);
       if (profileError && profileError.message.toLowerCase().includes("row-level security")) {
         const recovered = await recoverSessionFromPendingSignup();
         if (recovered) {
-          profileError = (await saveProfile()).error;
+          profileError = (await saveProfile(located)).error;
         }
       }
 

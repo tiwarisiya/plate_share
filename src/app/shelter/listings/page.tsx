@@ -1,8 +1,9 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { getSupabaseClient } from "@/lib/supabaseClient";
+import { ProfileLocation, distanceMiles, ensureProfileLocation, formatDistance, sortByDistance } from "@/lib/geo";
 import { LISTING_SELECT, ListingRow, listingPhotoUrl } from "@/lib/listings";
 import { RoleShell, useRoleGuard } from "@/components/ui/role-shell";
 import { Button } from "@/components/ui/button";
@@ -15,6 +16,8 @@ export default function ShelterListingsPage() {
   const [loading, setLoading] = useState(true);
   const [msg, setMsg] = useState<string | null>(null);
   const [claimingId, setClaimingId] = useState<string | null>(null);
+  const [myLocation, setMyLocation] = useState<ProfileLocation | null>(null);
+  const [withinRadiusOnly, setWithinRadiusOnly] = useState(true);
 
   const [reloadKey, setReloadKey] = useState(0);
   const reload = () => setReloadKey((key) => key + 1);
@@ -23,6 +26,7 @@ export default function ShelterListingsPage() {
     if (!userId) return;
     const load = async () => {
       const supabase = getSupabaseClient();
+      setMyLocation(await ensureProfileLocation(userId));
       const { data, error } = await supabase
         .from("donations")
         .select(LISTING_SELECT)
@@ -52,6 +56,17 @@ export default function ShelterListingsPage() {
     };
   }, []);
 
+  // Nearest first; with the filter on, hide listings beyond the pickup
+  // radius (listings without coordinates always show).
+  const visibleListings = useMemo(() => {
+    const sorted = sortByDistance(listings, (row) => distanceMiles(myLocation, row));
+    if (!withinRadiusOnly || !myLocation || myLocation.latitude === null) return sorted;
+    return sorted.filter((row) => {
+      const miles = distanceMiles(myLocation, row);
+      return miles === null || miles <= myLocation.service_radius_miles;
+    });
+  }, [listings, myLocation, withinRadiusOnly]);
+
   const claim = async (listing: ListingRow) => {
     setClaimingId(listing.id);
     const supabase = getSupabaseClient();
@@ -75,15 +90,25 @@ export default function ShelterListingsPage() {
           <p className="text-xs text-slate-600 md:text-sm">Surplus food restaurants have posted. Claim it and it appears in your matched requests for pickup.</p>
         </div>
 
+        {myLocation && myLocation.latitude !== null ? (
+          <label className="mb-4 flex items-center gap-2 text-xs text-slate-600">
+            <input type="checkbox" checked={withinRadiusOnly} onChange={(e) => setWithinRadiusOnly(e.target.checked)} />
+            Only within my {myLocation.service_radius_miles} mi pickup radius
+            {withinRadiusOnly && listings.length > visibleListings.length ? (
+              <span className="text-slate-400">({listings.length - visibleListings.length} farther away hidden)</span>
+            ) : null}
+          </label>
+        ) : null}
+
         {msg ? <p className="mb-4 rounded-xl border border-slate-200 bg-white p-3 text-sm text-slate-700">{msg}</p> : null}
 
         {loading ? (
           <p className="text-sm text-slate-600">Loading listings...</p>
-        ) : listings.length === 0 ? (
+        ) : visibleListings.length === 0 ? (
           <p className="rounded-xl border border-slate-200 bg-white px-4 py-6 text-sm text-slate-600">No food is available right now. New listings appear here as restaurants post them.</p>
         ) : (
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {listings.map((listing) => {
+            {visibleListings.map((listing) => {
               const photoUrl = listingPhotoUrl(listing.photo_path);
               return (
                 <div key={listing.id} className="flex flex-col overflow-hidden rounded-xl border border-slate-200 bg-white">
@@ -95,7 +120,9 @@ export default function ShelterListingsPage() {
                   )}
                   <div className="flex flex-1 flex-col gap-1 p-4">
                     <p className="font-semibold text-slate-900">{listing.food_type}</p>
-                    <p className="text-xs text-slate-500">{listing.restaurant_name || "Restaurant"}</p>
+                    <p className="text-xs text-slate-500">
+                      {listing.restaurant_name || "Restaurant"} • {formatDistance(distanceMiles(myLocation, listing))}
+                    </p>
                     {listing.description ? <p className="text-sm text-slate-700">{listing.description}</p> : null}
                     <p className="text-xs font-medium text-amber-800">
                       Pick up by {listing.pickup_by ? new Date(listing.pickup_by).toLocaleString() : "-"}

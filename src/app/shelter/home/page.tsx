@@ -16,6 +16,7 @@ import { MobileHeader, MobileBottomNav } from "@/components/ui/mobile-nav";
 import { Button } from "@/components/ui/button";
 import { OFFER_SELECT, OfferRow, OfferSummary } from "@/components/offers/offer-summary";
 import { HANDSHAKE_SELECT, PickupHandshake } from "@/components/offers/pickup-handshake";
+import { coordinatesFor, ensureProfileLocation, geocode } from "@/lib/geo";
 
 type Tab = "requests" | "chats";
 type RequestViewFilter = "active" | "all" | "open" | "matched" | "completed";
@@ -42,6 +43,7 @@ type RequestRow = {
   zip_code: string | null;
   restaurant_pickup_confirmed_at: string | null;
   shelter_pickup_confirmed_at: string | null;
+  latitude: number | null;
 };
 
 type ResponseRow = {
@@ -66,6 +68,8 @@ type ProfileRow = {
   state: string | null;
   zip_code: string | null;
   organization_notes: string | null;
+  latitude: number | null;
+  longitude: number | null;
 };
 
 type NewRequestState = {
@@ -184,13 +188,13 @@ export default function ShelterHomePage() {
 
     const { data: profileRow } = await supabase
       .from("profiles")
-      .select("id, name, email, phone, address, city, state, zip_code, organization_notes")
+      .select("id, name, email, phone, address, city, state, zip_code, organization_notes, latitude, longitude")
       .eq("id", user.id)
       .single();
 
     setProfile((profileRow as ProfileRow) || null);
 
-    const requestSelect = `id, title, request_type, quantity, food_needed, food_restrictions, pickup_window, urgency, notes, coordination_notes, status, created_at, matched_donation_id, shelter_contact_email, shelter_contact_phone, address, city, state, zip_code, ${HANDSHAKE_SELECT}`;
+    const requestSelect = `id, title, request_type, quantity, food_needed, food_restrictions, pickup_window, urgency, notes, coordination_notes, status, created_at, matched_donation_id, shelter_contact_email, shelter_contact_phone, address, city, state, zip_code, latitude, ${HANDSHAKE_SELECT}`;
 
     const { data: requestRows, error: requestError } = await supabase
       .from("shelter_requests")
@@ -215,6 +219,7 @@ export default function ShelterHomePage() {
       shelter_contact_phone: row.shelter_contact_phone || null,
     }));
     setRequests(parsedRequests);
+    if (!silent) void backfillLocations(user.id, profileRow as ProfileRow | null, parsedRequests);
 
     const requestIds = parsedRequests.map((row) => row.id);
     if (requestIds.length === 0) {
@@ -305,6 +310,21 @@ export default function ShelterHomePage() {
     if (!silent) setLoading(false);
   };
 
+  // Accounts and requests created before location support have no
+  // coordinates; geocode them so restaurants can sort by distance.
+  const backfillLocations = async (shelterId: string, profileRow: ProfileRow | null, rows: RequestRow[]) => {
+    if (profileRow && profileRow.latitude == null) await ensureProfileLocation(shelterId);
+
+    const supabase = getSupabaseClient();
+    const missing = rows.filter((row) => (row.status === "open" || row.status === "responded") && row.latitude == null && (row.address || row.zip_code));
+    for (const row of missing) {
+      const located = await geocode({ address: row.address, city: row.city, state: row.state, zip: row.zip_code });
+      if (located) {
+        await supabase.from("shelter_requests").update({ latitude: located.latitude, longitude: located.longitude }).eq("id", row.id);
+      }
+    }
+  };
+
   useEffect(() => {
     if (new URLSearchParams(window.location.search).get("tab") === "chats") setActiveTab("chats");
     void loadDashboard();
@@ -371,6 +391,11 @@ export default function ShelterHomePage() {
       ? newRequest.locationState || null
       : profile.state || null;
     const resolvedZip = newRequest.useCustomLocation ? newRequest.locationZip || null : profile.zip_code || null;
+    const coordinates = await coordinatesFor(
+      newRequest.useCustomLocation,
+      { address: resolvedAddress, city: resolvedCity, state: resolvedState, zip: resolvedZip },
+      profile
+    );
 
     const supabase = getSupabaseClient();
     const { error } = await supabase.from("shelter_requests").insert([
@@ -390,6 +415,7 @@ export default function ShelterHomePage() {
         city: resolvedCity,
         state: resolvedState,
         zip_code: resolvedZip,
+        ...coordinates,
         status: "open",
       },
     ]);
@@ -436,6 +462,14 @@ export default function ShelterHomePage() {
     if (canEditCoreRequestFields(row.status)) {
       const quantity = Number.parseInt(editState.quantity, 10);
       const parsedQuantity = Number.isNaN(quantity) ? null : quantity;
+      const locationChanged =
+        (editState.locationAddress || null) !== row.address ||
+        (editState.locationCity || null) !== row.city ||
+        (editState.locationState || null) !== row.state ||
+        (editState.locationZip || null) !== row.zip_code;
+      const located = locationChanged
+        ? await geocode({ address: editState.locationAddress, city: editState.locationCity, state: editState.locationState, zip: editState.locationZip })
+        : null;
 
       const { error } = await supabase
         .from("shelter_requests")
@@ -454,6 +488,7 @@ export default function ShelterHomePage() {
           city: editState.locationCity || null,
           state: editState.locationState || null,
           zip_code: editState.locationZip || null,
+          ...(locationChanged ? { latitude: located?.latitude ?? null, longitude: located?.longitude ?? null } : {}),
         })
         .eq("id", row.id)
         .eq("status", "open");

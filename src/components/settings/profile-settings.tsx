@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from "react";
 import { getSupabaseClient } from "@/lib/supabaseClient";
 import { AppRole } from "@/lib/flow";
+import { geocode } from "@/lib/geo";
 import { Button } from "@/components/ui/button";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { Field, Input, TextArea } from "@/components/ui/field";
@@ -20,10 +21,18 @@ type SettingsProfile = {
   city: string | null;
   state: string | null;
   zip_code: string | null;
+  latitude: number | null;
+  geocode_source: "address" | "zip" | null;
+  service_radius_miles: number | string;
 };
 
 const PROFILE_SELECT =
-  "name, phone, contact_name, organization_notes, cuisine, default_pickup_window, address, city, state, zip_code";
+  "name, phone, contact_name, organization_notes, cuisine, default_pickup_window, address, city, state, zip_code, latitude, geocode_source, service_radius_miles";
+
+const LOCATED_LABEL = {
+  address: "Located from the street address.",
+  zip: "Street address not found; using the ZIP code's center, so distances are approximate.",
+};
 
 type ProfileSettingsProps = {
   role: AppRole;
@@ -68,10 +77,11 @@ export function ProfileSettings({ role, userId }: ProfileSettingsProps) {
   const set = (key: keyof SettingsProfile) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
     setForm((prev) => (prev ? { ...prev, [key]: e.target.value } : prev));
 
-  const saveProfileFields = async (fields: Partial<SettingsProfile>, label: string) => {
+  const saveProfileFields = async (fields: Record<string, unknown>, label: string, note = "") => {
     const supabase = getSupabaseClient();
     const { error } = await supabase.from("profiles").update(fields).eq("id", userId);
-    setMsg(error ? `Failed to save ${label}: ${error.message}` : `${label[0].toUpperCase()}${label.slice(1)} saved.`);
+    setMsg(error ? `Failed to save ${label}: ${error.message}` : `${label[0].toUpperCase()}${label.slice(1)} saved.${note}`);
+    return !error;
   };
 
   const saveAccount = async (e: React.FormEvent) => {
@@ -92,10 +102,30 @@ export function ProfileSettings({ role, userId }: ProfileSettingsProps) {
   const saveLocation = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!form) return;
-    await saveProfileFields(
-      { address: form.address, city: form.city, state: form.state, zip_code: form.zip_code },
-      "location"
+    const radius = Number(form.service_radius_miles);
+    if (!radius || radius <= 0 || radius > 100) {
+      setMsg("Service radius must be between 1 and 100 miles.");
+      return;
+    }
+
+    const located = await geocode({ address: form.address, city: form.city, state: form.state, zip: form.zip_code });
+    const saved = await saveProfileFields(
+      {
+        address: form.address,
+        city: form.city,
+        state: form.state,
+        zip_code: form.zip_code,
+        service_radius_miles: radius,
+        latitude: located?.latitude ?? null,
+        longitude: located?.longitude ?? null,
+        geocode_source: located?.source ?? null,
+      },
+      "location",
+      located ? "" : " We couldn't locate this address, so distances won't be shown."
     );
+    if (saved) {
+      setForm((prev) => (prev ? { ...prev, latitude: located?.latitude ?? null, geocode_source: located?.source ?? null } : prev));
+    }
   };
 
   const changeEmail = async (e: React.FormEvent) => {
@@ -242,6 +272,12 @@ export function ProfileSettings({ role, userId }: ProfileSettingsProps) {
                   <Input value={form.zip_code || ""} onChange={set("zip_code")} maxLength={5} placeholder="95112" required />
                 </Field>
               </div>
+              <Field label={role === "restaurant" ? "Service radius (miles you'll serve)" : "Pickup radius (miles you can travel)"}>
+                <Input type="number" min={1} max={100} value={String(form.service_radius_miles ?? "")} onChange={set("service_radius_miles")} required />
+              </Field>
+              <p className="self-end text-xs text-slate-500">
+                {form.latitude != null && form.geocode_source ? LOCATED_LABEL[form.geocode_source] : "Not located yet. Save to look up this address."}
+              </p>
               <div className="md:col-span-2">
                 <Button type="submit">Save location</Button>
               </div>

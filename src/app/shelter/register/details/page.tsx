@@ -9,6 +9,7 @@ import {
   getDashboardPathForRole,
   isShelterProfileComplete,
 } from "@/lib/flow";
+import { geocode } from "@/lib/geo";
 import { Button } from "@/components/ui/button";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { Field, Input, TextArea } from "@/components/ui/field";
@@ -85,6 +86,7 @@ export default function ShelterRegisterDetailsPage() {
     setSaving(true);
 
     try {
+      const located = await geocode({ address: formData.address, city: formData.city, state: formData.state, zip: formData.zipCode });
       const supabase = getSupabaseClient();
       const { error: upsertError } = await supabase.from("profiles").upsert(
         {
@@ -99,6 +101,9 @@ export default function ShelterRegisterDetailsPage() {
           state: formData.state,
           zip_code: formData.zipCode,
           organization_notes: formData.organizationNotes || null,
+          latitude: located?.latitude ?? null,
+          longitude: located?.longitude ?? null,
+          geocode_source: located?.source ?? null,
         },
         { onConflict: "id" }
       );
