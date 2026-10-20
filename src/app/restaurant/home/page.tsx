@@ -14,7 +14,7 @@ import { MobileHeader, MobileBottomNav } from "@/components/ui/mobile-nav";
 import { Button } from "@/components/ui/button";
 import { CHAT_KINDS, NotificationKind, useNotifications } from "@/lib/notifications";
 import { NotificationBell } from "@/components/ui/notification-bell";
-import { ProfileLocation, distanceMiles, ensureProfileLocation, formatDistance, sortByDistance } from "@/lib/geo";
+import { Coordinates, ProfileLocation, distanceMiles, ensureProfileLocation, formatDistance, geocode, sortByDistance } from "@/lib/geo";
 
 type Tab = "open" | "matched" | "completed";
 type ScreenTab = "requests" | "chats";
@@ -31,6 +31,7 @@ type RequestRow = {
   notes: string | null;
   city: string | null;
   state: string | null;
+  zip_code: string | null;
   status: ShelterRequestStatus;
   created_at: string;
   matched_donation_id: string | null;
@@ -89,6 +90,7 @@ export default function RestaurantHome() {
   const [myLocation, setMyLocation] = useState<ProfileLocation | null>(null);
   const [withinRadiusOnly, setWithinRadiusOnly] = useState(true);
   const [userId, setUserId] = useState<string | null>(null);
+  const [zipCentroids, setZipCentroids] = useState<Record<string, Coordinates>>({});
   const notifications = useNotifications(userId);
   const { markRead } = notifications;
   const matchedIds = notifications.unreadRequestIds(MATCH_KINDS);
@@ -129,7 +131,7 @@ export default function RestaurantHome() {
     const [{ data: requestRows, error: requestError }, { data: myResponses, error: responsesError }] = await Promise.all([
       supabase
         .from("shelter_requests")
-        .select("id, shelter_id, title, quantity, food_needed, pickup_window, urgency, notes, city, state, status, created_at, matched_donation_id, latitude, longitude")
+        .select("id, shelter_id, title, quantity, food_needed, pickup_window, urgency, notes, city, state, zip_code, status, created_at, matched_donation_id, latitude, longitude")
         .in("status", ["open", "responded", "matched", "completed", "cancelled"])
         .order("created_at", { ascending: false }),
       supabase
@@ -193,6 +195,7 @@ export default function RestaurantHome() {
     );
 
     setOpenRequests(openQueue);
+    if (!silent) void estimateMissingLocations(openQueue);
     setMatchedRequests(matched);
     setCompletedRequests(completed);
 
@@ -286,18 +289,35 @@ export default function RestaurantHome() {
     };
   }, []);
 
-  const distanceTo = (row: RequestRow) => distanceMiles(myLocation, row);
+  // Requests created before location support have no coordinates until
+  // their shelter signs in again; estimate those from the ZIP code.
+  const estimateMissingLocations = async (rows: RequestRow[]) => {
+    const zips = Array.from(new Set(rows.filter((row) => row.latitude == null && row.zip_code).map((row) => row.zip_code as string)));
+    const found: Record<string, Coordinates> = {};
+    for (const zip of zips) {
+      const located = await geocode({ address: null, city: null, state: null, zip });
+      if (located) found[zip] = { latitude: located.latitude, longitude: located.longitude };
+    }
+    if (Object.keys(found).length > 0) setZipCentroids((prev) => ({ ...prev, ...found }));
+  };
+
+  const locationOf = (row: RequestRow) =>
+    row.latitude != null ? row : (row.zip_code && zipCentroids[row.zip_code]) || null;
+
+  const distanceTo = (row: RequestRow) => distanceMiles(myLocation, locationOf(row));
 
   // Nearest first. With the radius filter on, requests outside the service
   // radius are hidden; requests without coordinates are always shown.
   const visibleOpenRequests = useMemo(() => {
-    const sorted = sortByDistance(openRequests, (row) => distanceMiles(myLocation, row));
+    const sorted = sortByDistance(openRequests, (row) => distanceMiles(myLocation, locationOf(row)));
     if (!withinRadiusOnly || !myLocation || myLocation.latitude === null) return sorted;
     return sorted.filter((row) => {
-      const miles = distanceMiles(myLocation, row);
+      const miles = distanceMiles(myLocation, locationOf(row));
       return miles === null || miles <= myLocation.service_radius_miles;
     });
-  }, [openRequests, myLocation, withinRadiusOnly]);
+    // locationOf only reads zipCentroids
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openRequests, myLocation, withinRadiusOnly, zipCentroids]);
 
   const hiddenByRadius = openRequests.length - visibleOpenRequests.length;
 
@@ -450,7 +470,7 @@ export default function RestaurantHome() {
                           <div className="grid grid-cols-12 gap-2">
                             <div className="col-span-3">
                               <p className="font-medium text-slate-900">{row.title}</p>
-                              <p className="text-xs text-slate-500">{row.city || "City"}, {row.state || "ST"} • {formatDistance(distanceTo(row))}</p>
+                              <p className="text-xs text-slate-500">{row.city || "City"}, {row.state || "ST"} • {row.latitude == null && distanceTo(row) !== null ? "~" : ""}{formatDistance(distanceTo(row))}</p>
                             </div>
                             <p className="col-span-2 text-slate-700">{shelterNamesById[row.shelter_id] || "Shelter"}</p>
                             <p className="col-span-2 text-slate-700">{row.quantity || "-"}</p>
@@ -499,7 +519,7 @@ export default function RestaurantHome() {
                                 </div>
                                 <span className="shrink-0 text-xs text-slate-500">{row.quantity || "-"} servings</span>
                               </div>
-                              <p className="mt-1 text-xs text-slate-500">{row.city || "City"}, {row.state || "ST"} • {formatDistance(distanceTo(row))} • Pickup: {row.pickup_window || "Not set"}</p>
+                              <p className="mt-1 text-xs text-slate-500">{row.city || "City"}, {row.state || "ST"} • {row.latitude == null && distanceTo(row) !== null ? "~" : ""}{formatDistance(distanceTo(row))} • Pickup: {row.pickup_window || "Not set"}</p>
                               <p className="mt-0.5 text-xs text-slate-600">{row.food_needed || "Not specified"}</p>
                             </div>
                           </div>

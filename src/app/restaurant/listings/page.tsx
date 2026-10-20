@@ -93,6 +93,21 @@ export default function RestaurantListingsPage() {
     void load();
   }, [userId, reloadKey]);
 
+  useEffect(() => {
+    if (!userId) return;
+    const supabase = getSupabaseClient();
+    const channel = supabase
+      .channel("restaurant-listings-realtime")
+      .on("postgres_changes", { event: "*", schema: "public", table: "donations", filter: `restaurant_id=eq.${userId}` }, () => {
+        reload();
+      })
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [userId]);
+
   const resetForm = () => {
     setDescription("");
     setQuantity("");
