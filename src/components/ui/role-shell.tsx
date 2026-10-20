@@ -55,6 +55,13 @@ export function useRoleNavItems(role: AppRole, counts: Partial<Record<RoleNavId,
   return [
     { id: "requests", label: "Requests", icon: "📋", onClick: () => router.push(`/${role}/home`), count: counts.requests },
     { id: "chats", label: "Chats", icon: "💬", onClick: () => router.push(`/${role}/home?tab=chats`), count: counts.chats },
+    {
+      id: "listings",
+      label: role === "restaurant" ? "Listings" : "Available Food",
+      icon: "🥡",
+      onClick: () => router.push(`/${role}/listings`),
+      count: counts.listings,
+    },
     { id: "profile", label: "Profile", icon: "👤", onClick: () => router.push(`/${role}/profile`) },
     { id: "settings", label: "Settings", icon: "⚙️", onClick: () => router.push(`/${role}/settings`) },
     { id: "signout", label: "Sign Out", icon: "🚪", onClick: () => void handleSignOut() },

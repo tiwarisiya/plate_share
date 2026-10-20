@@ -6,6 +6,12 @@ import { getSupabaseClient } from "@/lib/supabaseClient";
 import { getCurrentUserRole, isRestaurantProfileComplete } from "@/lib/flow";
 import { EMPTY_FOOD_SAFETY, FoodSafetyValue, foodSafetyColumns, validateFoodSafety } from "@/lib/food-safety";
 import { FoodSafetyFields } from "@/components/offers/food-safety-fields";
+import {
+  EMPTY_PICKUP_ADDRESS,
+  PickupAddressFields,
+  PickupAddressValue,
+  validatePickupAddress,
+} from "@/components/offers/pickup-address-fields";
 
 type RequestRow = {
   id: string;
@@ -44,11 +50,7 @@ export default function DonationConfirmPage() {
   const [foodType, setFoodType] = useState("");
   const [quantity, setQuantity] = useState("");
   const [defaults, setDefaults] = useState<RestaurantDefaults | null>(null);
-  const [useCustomAddress, setUseCustomAddress] = useState(false);
-  const [pickupAddress, setPickupAddress] = useState("");
-  const [pickupCity, setPickupCity] = useState("");
-  const [pickupState, setPickupState] = useState("");
-  const [pickupZip, setPickupZip] = useState("");
+  const [pickupAddress, setPickupAddress] = useState<PickupAddressValue>(EMPTY_PICKUP_ADDRESS);
   const [foodSafety, setFoodSafety] = useState<FoodSafetyValue>(EMPTY_FOOD_SAFETY);
   const [existingResponseStatus, setExistingResponseStatus] = useState<ExistingResponseRow["status"] | null>(null);
 
@@ -160,9 +162,8 @@ export default function DonationConfirmPage() {
         throw new Error("Servings must be a positive number.");
       }
 
-      if (useCustomAddress && (!pickupAddress || !pickupCity || !pickupState || !pickupZip)) {
-        throw new Error("Fill in the full pickup address, or use your default address.");
-      }
+      const addressError = validatePickupAddress(pickupAddress);
+      if (addressError) throw new Error(addressError);
 
       const safetyError = validateFoodSafety(foodSafety);
       if (safetyError) throw new Error(safetyError);
@@ -175,10 +176,10 @@ export default function DonationConfirmPage() {
         p_response_note: responseNote || null,
         p_food_type: foodType || null,
         p_quantity: parsedQuantity,
-        p_pickup_address: useCustomAddress ? pickupAddress : null,
-        p_pickup_city: useCustomAddress ? pickupCity : null,
-        p_pickup_state: useCustomAddress ? pickupState : null,
-        p_pickup_zip: useCustomAddress ? pickupZip : null,
+        p_pickup_address: pickupAddress.useCustom ? pickupAddress.address : null,
+        p_pickup_city: pickupAddress.useCustom ? pickupAddress.city : null,
+        p_pickup_state: pickupAddress.useCustom ? pickupAddress.state : null,
+        p_pickup_zip: pickupAddress.useCustom ? pickupAddress.zip : null,
         p_prepared_at: safety.prepared_at,
         p_use_by: safety.use_by,
         p_storage_type: safety.storage_type,
@@ -260,26 +261,7 @@ export default function DonationConfirmPage() {
                 </div>
               </div>
 
-              <div>
-                <label className="flex items-center gap-2 text-sm text-slate-700">
-                  <input type="checkbox" checked={useCustomAddress} onChange={(e) => setUseCustomAddress(e.target.checked)} />
-                  Use a different pickup address for this offer
-                </label>
-                {useCustomAddress ? (
-                  <div className="mt-2 grid grid-cols-1 gap-2 md:grid-cols-2">
-                    <input className="h-12 w-full md:col-span-2 rounded-xl border border-slate-300 px-4 text-sm md:h-10 md:rounded-md md:px-3" value={pickupAddress} onChange={(e) => setPickupAddress(e.target.value)} placeholder="Address" />
-                    <input className="h-12 w-full rounded-xl border border-slate-300 px-4 text-sm md:h-10 md:rounded-md md:px-3" value={pickupCity} onChange={(e) => setPickupCity(e.target.value)} placeholder="City" />
-                    <div className="grid grid-cols-2 gap-2">
-                      <input className="h-12 w-full rounded-xl border border-slate-300 px-4 text-sm md:h-10 md:rounded-md md:px-3" maxLength={2} value={pickupState} onChange={(e) => setPickupState(e.target.value)} placeholder="State" />
-                      <input className="h-12 w-full rounded-xl border border-slate-300 px-4 text-sm md:h-10 md:rounded-md md:px-3" maxLength={5} value={pickupZip} onChange={(e) => setPickupZip(e.target.value)} placeholder="ZIP" />
-                    </div>
-                  </div>
-                ) : (
-                  <p className="mt-1 text-xs text-slate-500">
-                    Pickup from your default address: {defaults?.address ? `${defaults.address}, ${defaults.city || ""}, ${defaults.state || ""} ${defaults.zip_code || ""}` : "not set"}
-                  </p>
-                )}
-              </div>
+              <PickupAddressFields value={pickupAddress} onChange={setPickupAddress} defaults={defaults} />
 
               <FoodSafetyFields value={foodSafety} onChange={setFoodSafety} />
 

@@ -295,6 +295,7 @@ export default function RestaurantHome() {
   const navItems = [
     { id: "requests", label: "Requests", icon: "📋", onClick: () => setActiveTab("requests") },
     { id: "chats", label: "Chats", icon: "💬", onClick: () => setActiveTab("chats"), count: chatInboxItems.length },
+    { id: "listings", label: "Listings", icon: "🥡", onClick: () => router.push("/restaurant/listings") },
     { id: "profile", label: "Profile", icon: "👤", onClick: () => router.push("/restaurant/profile") },
     { id: "settings", label: "Settings", icon: "⚙️", onClick: () => router.push("/restaurant/settings") },
     { id: "signout", label: "Sign Out", icon: "🚪", onClick: () => void handleSignOut() },

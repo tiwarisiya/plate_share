@@ -559,6 +559,7 @@ export default function ShelterHomePage() {
   const navItems = [
     { id: "requests", label: "Requests", icon: "📋", onClick: () => setActiveTab("requests") },
     { id: "chats", label: "Chats", icon: "💬", onClick: () => setActiveTab("chats"), count: chatInboxItems.length },
+    { id: "listings", label: "Available Food", icon: "🥡", onClick: () => router.push("/shelter/listings") },
     { id: "profile", label: "Profile", icon: "👤", onClick: () => router.push("/shelter/profile") },
     { id: "settings", label: "Settings", icon: "⚙️", onClick: () => router.push("/shelter/settings") },
     { id: "signout", label: "Sign Out", icon: "🚪", onClick: () => void handleSignOut() },
