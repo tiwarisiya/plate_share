@@ -226,6 +226,7 @@ export default function RestaurantHome() {
   };
 
   useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("tab") === "chats") setActiveTab("chats");
     void loadDashboard();
 
     const timer = setInterval(() => {
@@ -294,6 +295,8 @@ export default function RestaurantHome() {
   const navItems = [
     { id: "requests", label: "Requests", icon: "📋", onClick: () => setActiveTab("requests") },
     { id: "chats", label: "Chats", icon: "💬", onClick: () => setActiveTab("chats"), count: chatInboxItems.length },
+    { id: "profile", label: "Profile", icon: "👤", onClick: () => router.push("/restaurant/profile") },
+    { id: "settings", label: "Settings", icon: "⚙️", onClick: () => router.push("/restaurant/settings") },
     { id: "signout", label: "Sign Out", icon: "🚪", onClick: () => void handleSignOut() },
   ];
 
@@ -494,7 +497,7 @@ export default function RestaurantHome() {
               )
             )}
           </section>
-          ) : activeTab === "chats" ? (
+          ) : (
             <section className="rounded-xl border border-slate-200 bg-white p-0 md:rounded">
               <div className="px-4 py-3 border-b border-slate-200">
                 <p className="text-sm font-semibold text-slate-900">Matched Chats</p>
@@ -524,7 +527,7 @@ export default function RestaurantHome() {
                 ))
               )}
             </section>
-          ) : null}
+          )}
         </div>
       </main>
     </div>

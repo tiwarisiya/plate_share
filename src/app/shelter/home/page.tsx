@@ -16,10 +16,8 @@ import { MobileHeader, MobileBottomNav } from "@/components/ui/mobile-nav";
 import { Button } from "@/components/ui/button";
 import { OFFER_SELECT, OfferRow, OfferSummary } from "@/components/offers/offer-summary";
 
-type Tab = "requests" | "chats" | "settings";
+type Tab = "requests" | "chats";
 type RequestViewFilter = "active" | "all" | "open" | "matched" | "completed";
-
-type SettingsTab = "account" | "location" | "security";
 
 type RequestRow = {
   id: string;
@@ -138,7 +136,6 @@ const initialRequestState: NewRequestState = {
 export default function ShelterHomePage() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<Tab>("requests");
-  const [activeSettingsTab, setActiveSettingsTab] = useState<SettingsTab>("account");
   const [requestView, setRequestView] = useState<RequestViewFilter>("active");
   const [loading, setLoading] = useState(true);
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
@@ -150,15 +147,6 @@ export default function ShelterHomePage() {
   const [chatInboxItems, setChatInboxItems] = useState<ChatInboxItem[]>([]);
   const [newRequest, setNewRequest] = useState<NewRequestState>(initialRequestState);
   const [editState, setEditState] = useState<EditState | null>(null);
-  const [name, setName] = useState("");
-  const [phone, setPhone] = useState("");
-  const [email, setEmail] = useState("");
-  const [address, setAddress] = useState("");
-  const [city, setCity] = useState("");
-  const [state, setState] = useState("");
-  const [zip, setZip] = useState("");
-  const [newPassword, setNewPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
   const [showCreateForm, setShowCreateForm] = useState(false);
 
   const loadDashboard = async (silent = false) => {
@@ -197,18 +185,7 @@ export default function ShelterHomePage() {
       .eq("id", user.id)
       .single();
 
-    if (profileRow) {
-      setProfile(profileRow as ProfileRow);
-      setName(profileRow.name || "");
-      setPhone(profileRow.phone || "");
-      setEmail(profileRow.email || user.email || "");
-      setAddress(profileRow.address || "");
-      setCity(profileRow.city || "");
-      setState(profileRow.state || "");
-      setZip(profileRow.zip_code || "");
-    } else {
-      setEmail(user.email || "");
-    }
+    setProfile((profileRow as ProfileRow) || null);
 
     const requestSelect =
       "id, title, request_type, quantity, food_needed, food_restrictions, pickup_window, urgency, notes, coordination_notes, status, created_at, matched_donation_id, shelter_contact_email, shelter_contact_phone, address, city, state, zip_code";
@@ -327,6 +304,7 @@ export default function ShelterHomePage() {
   };
 
   useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("tab") === "chats") setActiveTab("chats");
     void loadDashboard();
 
     const timer = setInterval(() => {
@@ -579,86 +557,10 @@ export default function ShelterHomePage() {
   const navItems = [
     { id: "requests", label: "Requests", icon: "📋", onClick: () => setActiveTab("requests") },
     { id: "chats", label: "Chats", icon: "💬", onClick: () => setActiveTab("chats"), count: chatInboxItems.length },
-    { id: "settings", label: "Settings", icon: "⚙️", onClick: () => setActiveTab("settings") },
+    { id: "profile", label: "Profile", icon: "👤", onClick: () => router.push("/shelter/profile") },
+    { id: "settings", label: "Settings", icon: "⚙️", onClick: () => router.push("/shelter/settings") },
     { id: "signout", label: "Sign Out", icon: "🚪", onClick: () => void handleSignOut() },
   ];
-
-  const saveAccount = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!userId) return;
-
-    const supabase = getSupabaseClient();
-    const { error } = await supabase
-      .from("profiles")
-      .update({ name, phone, email })
-      .eq("id", userId);
-
-    if (error) {
-      setStatusMsg(`Failed to save account: ${error.message}`);
-      return;
-    }
-
-    setProfile((prev) =>
-      prev
-        ? {
-            ...prev,
-            name,
-            phone,
-            email,
-          }
-        : prev
-    );
-    setStatusMsg("Account settings saved.");
-  };
-
-  const saveLocation = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!userId) return;
-
-    const supabase = getSupabaseClient();
-    const { error } = await supabase
-      .from("profiles")
-      .update({ address, city, state, zip_code: zip })
-      .eq("id", userId);
-
-    if (error) {
-      setStatusMsg(`Failed to save location: ${error.message}`);
-      return;
-    }
-
-    setProfile((prev) =>
-      prev
-        ? {
-            ...prev,
-            address,
-            city,
-            state,
-            zip_code: zip,
-          }
-        : prev
-    );
-    setStatusMsg("Location settings saved.");
-  };
-
-  const saveSecurity = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newPassword || newPassword !== confirmPassword) {
-      setStatusMsg("Passwords must match.");
-      return;
-    }
-
-    const supabase = getSupabaseClient();
-    const { error } = await supabase.auth.updateUser({ password: newPassword });
-
-    if (error) {
-      setStatusMsg(`Failed to update password: ${error.message}`);
-      return;
-    }
-
-    setNewPassword("");
-    setConfirmPassword("");
-    setStatusMsg("Password updated.");
-  };
 
   return (
     <div className="flex min-h-screen bg-slate-50">
@@ -678,12 +580,10 @@ export default function ShelterHomePage() {
         <div className="mx-auto max-w-7xl">
           <div className="mb-4">
             <h1 className="text-lg font-semibold text-slate-900 md:text-2xl">
-              {activeTab === "settings" ? "Shelter Profile" : activeTab === "chats" ? "Chats" : "Shelter Request Management"}
+              {activeTab === "chats" ? "Chats" : "Shelter Request Management"}
             </h1>
             <p className="text-xs text-slate-600 md:text-sm">
-              {activeTab === "settings"
-                ? "Manage account, location, and security controls."
-                : activeTab === "chats"
+              {activeTab === "chats"
                 ? "Conversations with restaurants on matched requests."
                 : "Create requests, review responses, and manage fulfillment."}
             </p>
@@ -1006,7 +906,7 @@ export default function ShelterHomePage() {
                 )}
               </section>
             </div>
-          ) : activeTab === "chats" ? (
+          ) : (
             <section className="rounded-xl border border-slate-200 bg-white p-0 md:rounded">
               <div className="px-4 py-3 border-b border-slate-200">
                 <p className="text-sm font-semibold text-slate-900">Matched Chats</p>
@@ -1035,88 +935,6 @@ export default function ShelterHomePage() {
                   </button>
                 ))
               )}
-            </section>
-          ) : (
-            <section className="space-y-4">
-              <div className="flex gap-2 overflow-x-auto pb-1 md:overflow-visible md:pb-0">
-                <Button variant={activeSettingsTab === "account" ? "primary" : "secondary"} className="shrink-0 whitespace-nowrap" onClick={() => setActiveSettingsTab("account")}>Account</Button>
-                <Button variant={activeSettingsTab === "location" ? "primary" : "secondary"} className="shrink-0 whitespace-nowrap" onClick={() => setActiveSettingsTab("location")}>Location</Button>
-                <Button variant={activeSettingsTab === "security" ? "primary" : "secondary"} className="shrink-0 whitespace-nowrap" onClick={() => setActiveSettingsTab("security")}>Security</Button>
-              </div>
-
-              <section className="rounded border border-slate-200 bg-white p-4 text-sm text-slate-700">
-                {loading ? (
-                  <p>Loading settings...</p>
-                ) : activeSettingsTab === "account" ? (
-                  <form className="grid grid-cols-1 gap-4 md:grid-cols-2" onSubmit={saveAccount}>
-                    <div>
-                      <label className="mb-1 block text-sm text-slate-700">Shelter name</label>
-                      <input className="h-10 w-full rounded border border-slate-300 px-3 text-sm" value={name} onChange={(e) => setName(e.target.value)} placeholder="Shelter display name" />
-                    </div>
-                    <div>
-                      <label className="mb-1 block text-sm text-slate-700">Phone</label>
-                      <input className="h-10 w-full rounded border border-slate-300 px-3 text-sm" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="(555) 555-5555" />
-                    </div>
-                    <div className="md:col-span-2">
-                      <label className="mb-1 block text-sm text-slate-700">Email</label>
-                      <input className="h-10 w-full rounded border border-slate-300 px-3 text-sm" value={email} onChange={(e) => setEmail(e.target.value)} type="email" />
-                    </div>
-                    <div className="md:col-span-2">
-                      <Button type="submit" variant="primary">Save account</Button>
-                    </div>
-                  </form>
-                ) : activeSettingsTab === "location" ? (
-                  <form className="grid grid-cols-1 gap-4 md:grid-cols-2" onSubmit={saveLocation}>
-                    <div className="md:col-span-2">
-                      <label className="mb-1 block text-sm text-slate-700">Address</label>
-                      <input className="h-10 w-full rounded border border-slate-300 px-3 text-sm" value={address} onChange={(e) => setAddress(e.target.value)} placeholder="123 Main St" />
-                    </div>
-                    <div>
-                      <label className="mb-1 block text-sm text-slate-700">City</label>
-                      <input className="h-10 w-full rounded border border-slate-300 px-3 text-sm" value={city} onChange={(e) => setCity(e.target.value)} placeholder="San Jose" />
-                    </div>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <label className="mb-1 block text-sm text-slate-700">State</label>
-                        <input className="h-10 w-full rounded border border-slate-300 px-3 text-sm" value={state} onChange={(e) => setState(e.target.value)} maxLength={2} placeholder="CA" />
-                      </div>
-                      <div>
-                        <label className="mb-1 block text-sm text-slate-700">ZIP</label>
-                        <input className="h-10 w-full rounded border border-slate-300 px-3 text-sm" value={zip} onChange={(e) => setZip(e.target.value)} maxLength={5} placeholder="95112" />
-                      </div>
-                    </div>
-                    <div className="md:col-span-2">
-                      <Button type="submit" variant="primary">Save location</Button>
-                    </div>
-                  </form>
-                ) : (
-                  <form className="grid grid-cols-1 gap-4 md:grid-cols-2" onSubmit={saveSecurity}>
-                    <div>
-                      <label className="mb-1 block text-sm text-slate-700">New password</label>
-                      <input
-                        className="h-10 w-full rounded border border-slate-300 px-3 text-sm"
-                        type="password"
-                        minLength={6}
-                        value={newPassword}
-                        onChange={(e) => setNewPassword(e.target.value)}
-                      />
-                    </div>
-                    <div>
-                      <label className="mb-1 block text-sm text-slate-700">Confirm password</label>
-                      <input
-                        className="h-10 w-full rounded border border-slate-300 px-3 text-sm"
-                        type="password"
-                        minLength={6}
-                        value={confirmPassword}
-                        onChange={(e) => setConfirmPassword(e.target.value)}
-                      />
-                    </div>
-                    <div className="md:col-span-2">
-                      <Button type="submit" variant="primary">Update password</Button>
-                    </div>
-                  </form>
-                )}
-              </section>
             </section>
           )}
         </div>
