@@ -6,6 +6,8 @@ import { getSupabaseClient } from "@/lib/supabaseClient";
 import { AppRole, getLoginPathForRole, getRoleGuardRedirect } from "@/lib/flow";
 import { Sidebar } from "@/components/ui/sidebar";
 import { MobileBottomNav, MobileHeader } from "@/components/ui/mobile-nav";
+import { NotificationBell } from "@/components/ui/notification-bell";
+import { CHAT_KINDS, REQUEST_KINDS, useNotifications } from "@/lib/notifications";
 
 export type RoleNavId = "requests" | "chats" | "listings" | "profile" | "settings";
 
@@ -71,17 +73,30 @@ export function useRoleNavItems(role: AppRole, counts: Partial<Record<RoleNavId,
 type RoleShellProps = {
   role: AppRole;
   activeId: RoleNavId;
+  userId: string | null;
   children: React.ReactNode;
 };
 
-export function RoleShell({ role, activeId, children }: RoleShellProps) {
-  const items = useRoleNavItems(role);
+export function RoleShell({ role, activeId, userId, children }: RoleShellProps) {
+  const notifications = useNotifications(userId);
+  const items = useRoleNavItems(role, {
+    requests: notifications.countOf(REQUEST_KINDS),
+    chats: notifications.countOf(CHAT_KINDS),
+  });
   const subtitle = role === "restaurant" ? "Restaurant Operations" : "Shelter Operations";
+  const bell = (
+    <NotificationBell
+      role={role}
+      items={notifications.items}
+      unreadCount={notifications.unread.length}
+      onMarkRead={(requestId) => notifications.markRead(requestId ?? null)}
+    />
+  );
 
   return (
     <div className="flex min-h-screen bg-slate-50">
-      <MobileHeader title="Plate Share" subtitle={subtitle} />
-      <Sidebar title="Plate Share" subtitle={subtitle} activeId={activeId} items={items} />
+      <MobileHeader title="Plate Share" subtitle={subtitle} action={bell} />
+      <Sidebar title="Plate Share" subtitle={subtitle} activeId={activeId} items={items} headerAction={bell} />
       <MobileBottomNav items={items} activeId={activeId} />
       <main className="flex-1 px-4 pt-[72px] pb-20 md:px-6 md:py-6 md:pt-6 md:pb-6">{children}</main>
     </div>

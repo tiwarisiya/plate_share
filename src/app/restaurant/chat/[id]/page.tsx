@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { getSupabaseClient } from "@/lib/supabaseClient";
 import { getRoleGuardRedirect, getLoginPathForRole } from "@/lib/flow";
 import { Button } from "@/components/ui/button";
+import { markNotificationsRead } from "@/lib/notifications";
 
 type ChatMessage = {
   id: string;
@@ -94,6 +95,7 @@ export default function RestaurantChatPage() {
 
     setMessages((data || []) as ChatMessage[]);
     setLoading(false);
+    void markNotificationsRead(requestId, ["new_message"]);
   };
 
   useEffect(() => {

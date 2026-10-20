@@ -83,7 +83,7 @@ export default function ShelterListingsPage() {
   };
 
   return (
-    <RoleShell role="shelter" activeId="listings">
+    <RoleShell role="shelter" activeId="listings" userId={userId}>
       <div className="mx-auto max-w-7xl">
         <div className="mb-4">
           <h1 className="text-lg font-semibold text-slate-900 md:text-2xl">Available Food</h1>

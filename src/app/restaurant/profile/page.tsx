@@ -8,7 +8,7 @@ export default function RestaurantProfilePage() {
   const userId = useRoleGuard("restaurant");
 
   return (
-    <RoleShell role="restaurant" activeId="profile">
+    <RoleShell role="restaurant" activeId="profile" userId={userId}>
       {userId ? <ProfileOverview role="restaurant" userId={userId} /> : <p className="text-sm text-slate-600">Loading profile...</p>}
     </RoleShell>
   );

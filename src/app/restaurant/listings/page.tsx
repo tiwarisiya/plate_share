@@ -181,7 +181,7 @@ export default function RestaurantListingsPage() {
   };
 
   return (
-    <RoleShell role="restaurant" activeId="listings">
+    <RoleShell role="restaurant" activeId="listings" userId={userId}>
       <div className="mx-auto max-w-7xl">
         <div className="mb-4">
           <h1 className="text-lg font-semibold text-slate-900 md:text-2xl">Surplus Food Listings</h1>

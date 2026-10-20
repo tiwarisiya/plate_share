@@ -8,7 +8,7 @@ export default function ShelterSettingsPage() {
   const userId = useRoleGuard("shelter");
 
   return (
-    <RoleShell role="shelter" activeId="settings">
+    <RoleShell role="shelter" activeId="settings" userId={userId}>
       <div className="mx-auto max-w-4xl">
         <div className="mb-4">
           <h1 className="text-lg font-semibold text-slate-900 md:text-2xl">Settings</h1>

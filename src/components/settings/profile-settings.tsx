@@ -24,10 +24,11 @@ type SettingsProfile = {
   latitude: number | null;
   geocode_source: "address" | "zip" | null;
   service_radius_miles: number | string;
+  email_notifications: boolean;
 };
 
 const PROFILE_SELECT =
-  "name, phone, contact_name, organization_notes, cuisine, default_pickup_window, address, city, state, zip_code, latitude, geocode_source, service_radius_miles";
+  "name, phone, contact_name, organization_notes, cuisine, default_pickup_window, address, city, state, zip_code, latitude, geocode_source, service_radius_miles, email_notifications";
 
 const LOCATED_LABEL = {
   address: "Located from the street address.",
@@ -88,7 +89,7 @@ export function ProfileSettings({ role, userId }: ProfileSettingsProps) {
     e.preventDefault();
     if (!form) return;
 
-    const fields: Partial<SettingsProfile> = { name: form.name, phone: form.phone };
+    const fields: Partial<SettingsProfile> = { name: form.name, phone: form.phone, email_notifications: form.email_notifications };
     if (role === "restaurant") {
       fields.cuisine = form.cuisine;
       fields.default_pickup_window = form.default_pickup_window || null;
@@ -229,6 +230,14 @@ export function ProfileSettings({ role, userId }: ProfileSettingsProps) {
                     </div>
                   </>
                 )}
+                <label className="flex items-center gap-2 text-sm text-slate-700 md:col-span-2">
+                  <input
+                    type="checkbox"
+                    checked={form.email_notifications}
+                    onChange={(e) => setForm((prev) => (prev ? { ...prev, email_notifications: e.target.checked } : prev))}
+                  />
+                  Email me about new responses, matches, messages and pickups
+                </label>
                 <div className="md:col-span-2">
                   <Button type="submit">Save account</Button>
                 </div>

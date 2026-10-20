@@ -8,7 +8,7 @@ export default function RestaurantSettingsPage() {
   const userId = useRoleGuard("restaurant");
 
   return (
-    <RoleShell role="restaurant" activeId="settings">
+    <RoleShell role="restaurant" activeId="settings" userId={userId}>
       <div className="mx-auto max-w-4xl">
         <div className="mb-4">
           <h1 className="text-lg font-semibold text-slate-900 md:text-2xl">Settings</h1>

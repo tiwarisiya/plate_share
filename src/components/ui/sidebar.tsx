@@ -28,6 +28,7 @@ type SidebarProps = {
   inboxEmptyLabel?: string;
   footerLabel?: string;
   onFooterClick?: () => void;
+  headerAction?: React.ReactNode;
 };
 
 export function Sidebar({
@@ -41,12 +42,16 @@ export function Sidebar({
   inboxEmptyLabel = "No active chats",
   footerLabel,
   onFooterClick,
+  headerAction,
 }: SidebarProps) {
   return (
     <aside className="hidden md:sticky md:top-0 md:block h-screen w-64 shrink-0 border-r border-slate-200 bg-white">
-      <div className="px-4 py-5">
-        <p className="text-sm font-semibold text-slate-900">{title}</p>
-        <p className="text-xs text-slate-500">{subtitle}</p>
+      <div className="flex items-start justify-between gap-2 px-4 py-5">
+        <div>
+          <p className="text-sm font-semibold text-slate-900">{title}</p>
+          <p className="text-xs text-slate-500">{subtitle}</p>
+        </div>
+        {headerAction}
       </div>
       <nav className="space-y-1 px-3">
         {items.map((item) => (

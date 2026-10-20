@@ -13,6 +13,7 @@ type MobileHeaderProps = {
   subtitle: string;
   notificationCount?: number;
   onNotificationClick?: () => void;
+  action?: React.ReactNode;
 };
 
 export function MobileHeader({
@@ -20,6 +21,7 @@ export function MobileHeader({
   subtitle,
   notificationCount,
   onNotificationClick,
+  action,
 }: MobileHeaderProps) {
   return (
     <header className="fixed top-0 left-0 right-0 z-40 flex h-14 items-center justify-between border-b border-slate-200 bg-white px-4 md:hidden">
@@ -39,7 +41,7 @@ export function MobileHeader({
             </span>
           ) : null}
         </button>
-      ) : null}
+      ) : action}
     </header>
   );
 }

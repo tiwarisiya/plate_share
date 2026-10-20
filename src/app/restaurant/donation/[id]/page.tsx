@@ -11,6 +11,7 @@ import {
 } from "@/lib/flow";
 import { OFFER_SELECT, OfferRow, OfferSummary } from "@/components/offers/offer-summary";
 import { HANDSHAKE_SELECT, PickupHandshake } from "@/components/offers/pickup-handshake";
+import { REQUEST_KINDS, markNotificationsRead } from "@/lib/notifications";
 
 type RequestRow = {
   id: string;
@@ -111,6 +112,7 @@ export default function DonationRequestDetailsPage() {
 
     const parsed = requestRow as RequestRow;
     setRequest(parsed);
+    void markNotificationsRead(parsed.id, REQUEST_KINDS);
     setCoordinationPickup(parsed.pickup_window || "");
 
     const { data: shelter } = await supabase

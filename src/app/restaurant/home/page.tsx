@@ -12,6 +12,8 @@ import {
 import { Sidebar } from "@/components/ui/sidebar";
 import { MobileHeader, MobileBottomNav } from "@/components/ui/mobile-nav";
 import { Button } from "@/components/ui/button";
+import { CHAT_KINDS, NotificationKind, useNotifications } from "@/lib/notifications";
+import { NotificationBell } from "@/components/ui/notification-bell";
 import { ProfileLocation, distanceMiles, ensureProfileLocation, formatDistance, sortByDistance } from "@/lib/geo";
 
 type Tab = "open" | "matched" | "completed";
@@ -63,6 +65,9 @@ type ChatInboxItem = {
   sortAt: number;
 };
 
+// Request news a restaurant sees on its Matched tab.
+const MATCH_KINDS: NotificationKind[] = ["response_accepted", "listing_claimed"];
+
 type ShelterSummary = {
   id: string;
   name: string | null;
@@ -83,6 +88,12 @@ export default function RestaurantHome() {
   const [chatInboxItems, setChatInboxItems] = useState<ChatInboxItem[]>([]);
   const [myLocation, setMyLocation] = useState<ProfileLocation | null>(null);
   const [withinRadiusOnly, setWithinRadiusOnly] = useState(true);
+  const [userId, setUserId] = useState<string | null>(null);
+  const notifications = useNotifications(userId);
+  const { markRead } = notifications;
+  const matchedIds = notifications.unreadRequestIds(MATCH_KINDS);
+  const unreadChatIds = notifications.unreadRequestIds(CHAT_KINDS);
+  const hasUnreadMatches = matchedIds.size > 0;
 
   const loadDashboard = async (silent = false) => {
     if (!silent) {
@@ -112,6 +123,7 @@ export default function RestaurantHome() {
       return;
     }
 
+    setUserId(user.id);
     if (!silent) setMyLocation(await ensureProfileLocation(user.id));
 
     const [{ data: requestRows, error: requestError }, { data: myResponses, error: responsesError }] = await Promise.all([
@@ -232,6 +244,14 @@ export default function RestaurantHome() {
     if (!silent) setLoading(false);
   };
 
+  // Matches are "seen" once the Matched list has been on screen for a few
+  // seconds; rows keep their "New" tag until then.
+  useEffect(() => {
+    if (activeTab !== "requests" || requestTab !== "matched" || loading || !hasUnreadMatches) return;
+    const timer = setTimeout(() => void markRead(null, MATCH_KINDS), 4000);
+    return () => clearTimeout(timer);
+  }, [activeTab, requestTab, loading, hasUnreadMatches, markRead]);
+
   useEffect(() => {
     if (new URLSearchParams(window.location.search).get("tab") === "chats") setActiveTab("chats");
     void loadDashboard();
@@ -315,25 +335,36 @@ export default function RestaurantHome() {
   };
 
   const navItems = [
-    { id: "requests", label: "Requests", icon: "📋", onClick: () => setActiveTab("requests") },
-    { id: "chats", label: "Chats", icon: "💬", onClick: () => setActiveTab("chats"), count: chatInboxItems.length },
+    { id: "requests", label: "Requests", icon: "📋", onClick: () => setActiveTab("requests"), count: notifications.countOf(MATCH_KINDS) },
+    { id: "chats", label: "Chats", icon: "💬", onClick: () => setActiveTab("chats"), count: notifications.countOf(CHAT_KINDS) },
     { id: "listings", label: "Listings", icon: "🥡", onClick: () => router.push("/restaurant/listings") },
     { id: "profile", label: "Profile", icon: "👤", onClick: () => router.push("/restaurant/profile") },
     { id: "settings", label: "Settings", icon: "⚙️", onClick: () => router.push("/restaurant/settings") },
     { id: "signout", label: "Sign Out", icon: "🚪", onClick: () => void handleSignOut() },
   ];
 
+  const bell = (
+    <NotificationBell
+      role="restaurant"
+      items={notifications.items}
+      unreadCount={notifications.unread.length}
+      onMarkRead={(requestId) => markRead(requestId ?? null)}
+    />
+  );
+
   return (
     <div className="flex min-h-screen bg-slate-50">
       <MobileHeader
         title="Plate Share"
         subtitle="Restaurant Operations"
+        action={bell}
       />
       <Sidebar
         title="Plate Share"
         subtitle="Restaurant Operations"
         activeId={activeTab}
         items={navItems}
+        headerAction={bell}
       />
       <MobileBottomNav items={navItems} activeId={activeTab} />
 
@@ -503,7 +534,10 @@ export default function RestaurantHome() {
                   matchedRequests.map((row) => (
                     <div key={row.id} className="border-t border-slate-200 px-4 py-3 text-sm first:border-t-0">
                       <div className="flex items-center justify-between">
-                        <p className="font-medium text-slate-900">{row.title}</p>
+                        <p className="font-medium text-slate-900">
+                          {row.title}
+                          {matchedIds.has(row.id) ? <span className="ml-2 rounded-full bg-rose-600 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-white">New</span> : null}
+                        </p>
                         <p className="text-slate-700">{mapShelterStatusForUi(row.status)}</p>
                       </div>
                       <p className="text-slate-600">Pickup window: {row.pickup_window || "Not set"}</p>
@@ -551,7 +585,10 @@ export default function RestaurantHome() {
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between gap-2">
-                        <p className="text-sm font-semibold text-slate-900 truncate">{item.partnerName}</p>
+                        <p className={`text-sm truncate text-slate-900 ${unreadChatIds.has(item.requestId) ? "font-bold" : "font-semibold"}`}>
+                          {unreadChatIds.has(item.requestId) ? <span className="mr-1.5 inline-block h-2 w-2 rounded-full bg-rose-600" /> : null}
+                          {item.partnerName}
+                        </p>
                         <p className="shrink-0 text-[10px] text-slate-400">{item.timestamp}</p>
                       </div>
                       <p className="text-xs text-slate-500 truncate">{item.requestTitle}</p>
