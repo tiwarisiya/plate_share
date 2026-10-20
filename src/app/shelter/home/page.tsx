@@ -15,6 +15,7 @@ import { Sidebar } from "@/components/ui/sidebar";
 import { MobileHeader, MobileBottomNav } from "@/components/ui/mobile-nav";
 import { Button } from "@/components/ui/button";
 import { OFFER_SELECT, OfferRow, OfferSummary } from "@/components/offers/offer-summary";
+import { HANDSHAKE_SELECT, PickupHandshake } from "@/components/offers/pickup-handshake";
 
 type Tab = "requests" | "chats";
 type RequestViewFilter = "active" | "all" | "open" | "matched" | "completed";
@@ -39,6 +40,8 @@ type RequestRow = {
   city: string | null;
   state: string | null;
   zip_code: string | null;
+  restaurant_pickup_confirmed_at: string | null;
+  shelter_pickup_confirmed_at: string | null;
 };
 
 type ResponseRow = {
@@ -187,8 +190,7 @@ export default function ShelterHomePage() {
 
     setProfile((profileRow as ProfileRow) || null);
 
-    const requestSelect =
-      "id, title, request_type, quantity, food_needed, food_restrictions, pickup_window, urgency, notes, coordination_notes, status, created_at, matched_donation_id, shelter_contact_email, shelter_contact_phone, address, city, state, zip_code";
+    const requestSelect = `id, title, request_type, quantity, food_needed, food_restrictions, pickup_window, urgency, notes, coordination_notes, status, created_at, matched_donation_id, shelter_contact_email, shelter_contact_phone, address, city, state, zip_code, ${HANDSHAKE_SELECT}`;
 
     const { data: requestRows, error: requestError } = await supabase
       .from("shelter_requests")
@@ -481,9 +483,9 @@ export default function ShelterHomePage() {
     setStatusMsg("Request updated.");
   };
 
-  const updateRequestStatus = async (requestId: string, nextStatus: "completed" | "cancelled") => {
+  const updateRequestStatus = async (requestId: string, nextStatus: "cancelled") => {
     const supabase = getSupabaseClient();
-    const { error } = await supabase.rpc(nextStatus === "completed" ? "complete_request" : "cancel_request", {
+    const { error } = await supabase.rpc("cancel_request", {
       p_request_id: requestId,
     });
 
@@ -772,9 +774,6 @@ export default function ShelterHomePage() {
                             {row.status === "open" || row.status === "responded" ? (
                               <Button size="sm" variant="danger" onClick={() => void updateRequestStatus(row.id, "cancelled")}>Cancel</Button>
                             ) : null}
-                            {row.status === "matched" ? (
-                              <Button size="sm" variant="primary" onClick={() => void updateRequestStatus(row.id, "completed")}>Mark Completed</Button>
-                            ) : null}
                           </div>
                         </div>
 
@@ -809,9 +808,6 @@ export default function ShelterHomePage() {
                             )}
                             {row.status === "open" || row.status === "responded" ? (
                               <button className="rounded-full border border-red-300 bg-white px-3 py-1.5 text-xs font-medium text-red-700" onClick={() => void updateRequestStatus(row.id, "cancelled")}>Cancel</button>
-                            ) : null}
-                            {row.status === "matched" ? (
-                              <button className="rounded-full bg-emerald-800 px-3 py-1.5 text-xs font-medium text-white" onClick={() => void updateRequestStatus(row.id, "completed")}>Complete</button>
                             ) : null}
                             {row.status === "completed" ? (
                               <span className="flex items-center text-xs text-emerald-700 font-medium">Delivered ✓</span>
@@ -897,6 +893,18 @@ export default function ShelterHomePage() {
                                 <OfferSummary offer={acceptedResponse.offer} />
                               </div>
                               <Button size="sm" variant="secondary" onClick={() => router.push(`/shelter/chat/${row.id}`)}>Open Chat</Button>
+                            </div>
+                            <div className="mt-2">
+                              <PickupHandshake
+                                requestId={row.id}
+                                role="shelter"
+                                restaurantConfirmedAt={row.restaurant_pickup_confirmed_at}
+                                shelterConfirmedAt={row.shelter_pickup_confirmed_at}
+                                onChange={async (message) => {
+                                  await loadDashboard();
+                                  setStatusMsg(message);
+                                }}
+                              />
                             </div>
                           </div>
                         ) : null}

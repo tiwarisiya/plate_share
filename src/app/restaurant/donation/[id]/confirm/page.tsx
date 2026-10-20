@@ -4,6 +4,8 @@ import React, { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { getSupabaseClient } from "@/lib/supabaseClient";
 import { getCurrentUserRole, isRestaurantProfileComplete } from "@/lib/flow";
+import { EMPTY_FOOD_SAFETY, FoodSafetyValue, foodSafetyColumns, validateFoodSafety } from "@/lib/food-safety";
+import { FoodSafetyFields } from "@/components/offers/food-safety-fields";
 
 type RequestRow = {
   id: string;
@@ -47,6 +49,7 @@ export default function DonationConfirmPage() {
   const [pickupCity, setPickupCity] = useState("");
   const [pickupState, setPickupState] = useState("");
   const [pickupZip, setPickupZip] = useState("");
+  const [foodSafety, setFoodSafety] = useState<FoodSafetyValue>(EMPTY_FOOD_SAFETY);
   const [existingResponseStatus, setExistingResponseStatus] = useState<ExistingResponseRow["status"] | null>(null);
 
   const loadData = async () => {
@@ -161,6 +164,10 @@ export default function DonationConfirmPage() {
         throw new Error("Fill in the full pickup address, or use your default address.");
       }
 
+      const safetyError = validateFoodSafety(foodSafety);
+      if (safetyError) throw new Error(safetyError);
+      const safety = foodSafetyColumns(foodSafety);
+
       const supabase = getSupabaseClient();
       const { error: responseError } = await supabase.rpc("submit_request_response", {
         p_request_id: request.id,
@@ -172,6 +179,13 @@ export default function DonationConfirmPage() {
         p_pickup_city: useCustomAddress ? pickupCity : null,
         p_pickup_state: useCustomAddress ? pickupState : null,
         p_pickup_zip: useCustomAddress ? pickupZip : null,
+        p_prepared_at: safety.prepared_at,
+        p_use_by: safety.use_by,
+        p_storage_type: safety.storage_type,
+        p_allergens: safety.allergens,
+        p_allergen_notes: safety.allergen_notes,
+        p_estimated_weight_lbs: safety.estimated_weight_lbs,
+        p_safety_checklist_confirmed: true,
       });
 
       if (responseError) {
@@ -266,6 +280,8 @@ export default function DonationConfirmPage() {
                   </p>
                 )}
               </div>
+
+              <FoodSafetyFields value={foodSafety} onChange={setFoodSafety} />
 
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">Response note (optional)</label>

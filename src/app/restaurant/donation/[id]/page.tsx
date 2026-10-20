@@ -10,6 +10,7 @@ import {
   ShelterRequestStatus,
 } from "@/lib/flow";
 import { OFFER_SELECT, OfferRow, OfferSummary } from "@/components/offers/offer-summary";
+import { HANDSHAKE_SELECT, PickupHandshake } from "@/components/offers/pickup-handshake";
 
 type RequestRow = {
   id: string;
@@ -30,6 +31,8 @@ type RequestRow = {
   zip_code: string | null;
   status: ShelterRequestStatus;
   matched_donation_id: string | null;
+  restaurant_pickup_confirmed_at: string | null;
+  shelter_pickup_confirmed_at: string | null;
 };
 
 type ProfileRow = {
@@ -58,9 +61,9 @@ export default function DonationRequestDetailsPage() {
   const [isMatchedToMe, setIsMatchedToMe] = useState(false);
   const [coordinationPickup, setCoordinationPickup] = useState("");
 
-  const loadRequest = async () => {
+  const loadRequest = async (message: string | null = null) => {
     setLoading(true);
-    setStatusMsg(null);
+    setStatusMsg(message);
 
     const supabase = getSupabaseClient();
     const {
@@ -89,7 +92,7 @@ export default function DonationRequestDetailsPage() {
     const { data: requestRow, error: requestError } = await supabase
       .from("shelter_requests")
       .select(
-        "id, shelter_id, title, quantity, food_needed, food_restrictions, pickup_window, urgency, notes, coordination_notes, shelter_contact_email, shelter_contact_phone, address, city, state, zip_code, status, matched_donation_id"
+        `id, shelter_id, title, quantity, food_needed, food_restrictions, pickup_window, urgency, notes, coordination_notes, shelter_contact_email, shelter_contact_phone, address, city, state, zip_code, status, matched_donation_id, ${HANDSHAKE_SELECT}`
       )
       .eq("id", requestId)
       .maybeSingle();
@@ -184,8 +187,7 @@ export default function DonationRequestDetailsPage() {
       return;
     }
 
-    setStatusMsg("Pickup window updated for coordination.");
-    await loadRequest();
+    await loadRequest("Pickup window updated for coordination.");
   };
 
   const urgencyColor = (u: string) => {
@@ -356,6 +358,16 @@ export default function DonationRequestDetailsPage() {
                   </button>
                 )}
               </div>
+
+              {isMatchedToMe && (request.status === "matched" || request.status === "completed") ? (
+                <PickupHandshake
+                  requestId={request.id}
+                  role="restaurant"
+                  restaurantConfirmedAt={request.restaurant_pickup_confirmed_at}
+                  shelterConfirmedAt={request.shelter_pickup_confirmed_at}
+                  onChange={(message) => loadRequest(message)}
+                />
+              ) : null}
 
               {/* Coordination pickup update */}
               {canUpdateMatchedPickup ? (
