@@ -8,6 +8,8 @@ import { LISTING_PHOTO_BUCKET, LISTING_SELECT, ListingRow, isListingExpired, lis
 import { RoleShell, useRoleGuard } from "@/components/ui/role-shell";
 import { Button } from "@/components/ui/button";
 import { FoodSafetyFields } from "@/components/offers/food-safety-fields";
+import { PickupMethodField } from "@/components/offers/pickup-method-field";
+import { PickupMethod } from "@/lib/delivery";
 import { OfferSummary } from "@/components/offers/offer-summary";
 import {
   AddressDefaults,
@@ -50,6 +52,7 @@ export default function RestaurantListingsPage() {
   const [photo, setPhoto] = useState<File | null>(null);
   const [pickupAddress, setPickupAddress] = useState<PickupAddressValue>(EMPTY_PICKUP_ADDRESS);
   const [foodSafety, setFoodSafety] = useState<FoodSafetyValue>(EMPTY_FOOD_SAFETY);
+  const [pickupMethod, setPickupMethod] = useState<PickupMethod>("self");
 
   const [reloadKey, setReloadKey] = useState(0);
   const reload = () => setReloadKey((key) => key + 1);
@@ -153,6 +156,7 @@ export default function RestaurantListingsPage() {
       state: useCustom ? pickupAddress.state : defaults.state,
       zip_code: useCustom ? pickupAddress.zip : defaults.zip_code,
       pickup_address_override: useCustom,
+      pickup_method: pickupMethod,
       ...coordinates,
       ...foodSafetyColumns(foodSafety),
       safety_checklist_confirmed_at: new Date().toISOString(),
@@ -221,6 +225,7 @@ export default function RestaurantListingsPage() {
                 <input type="file" accept="image/*" className="text-sm" onChange={(e) => setPhoto(e.target.files?.[0] || null)} />
               </div>
               <PickupAddressFields value={pickupAddress} onChange={setPickupAddress} defaults={defaults} />
+              <PickupMethodField value={pickupMethod} onChange={setPickupMethod} />
               <FoodSafetyFields value={foodSafety} onChange={setFoodSafety} />
               <Button type="submit" className="w-full" disabled={submitting || !defaults}>{submitting ? "Posting..." : "Post listing"}</Button>
             </form>

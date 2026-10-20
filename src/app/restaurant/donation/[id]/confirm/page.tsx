@@ -7,6 +7,8 @@ import { getCurrentUserRole, isRestaurantProfileComplete } from "@/lib/flow";
 import { EMPTY_FOOD_SAFETY, FoodSafetyValue, foodSafetyColumns, validateFoodSafety } from "@/lib/food-safety";
 import { geocode } from "@/lib/geo";
 import { FoodSafetyFields } from "@/components/offers/food-safety-fields";
+import { PickupMethodField } from "@/components/offers/pickup-method-field";
+import { PickupMethod } from "@/lib/delivery";
 import {
   EMPTY_PICKUP_ADDRESS,
   PickupAddressFields,
@@ -53,6 +55,7 @@ export default function DonationConfirmPage() {
   const [defaults, setDefaults] = useState<RestaurantDefaults | null>(null);
   const [pickupAddress, setPickupAddress] = useState<PickupAddressValue>(EMPTY_PICKUP_ADDRESS);
   const [foodSafety, setFoodSafety] = useState<FoodSafetyValue>(EMPTY_FOOD_SAFETY);
+  const [pickupMethod, setPickupMethod] = useState<PickupMethod>("self");
   const [existingResponseStatus, setExistingResponseStatus] = useState<ExistingResponseRow["status"] | null>(null);
 
   const loadData = async () => {
@@ -193,6 +196,7 @@ export default function DonationConfirmPage() {
         p_safety_checklist_confirmed: true,
         p_pickup_latitude: overrideLocation?.latitude ?? null,
         p_pickup_longitude: overrideLocation?.longitude ?? null,
+        p_pickup_method: pickupMethod,
       });
 
       if (responseError) {
@@ -268,6 +272,7 @@ export default function DonationConfirmPage() {
               </div>
 
               <PickupAddressFields value={pickupAddress} onChange={setPickupAddress} defaults={defaults} />
+              <PickupMethodField value={pickupMethod} onChange={setPickupMethod} />
 
               <FoodSafetyFields value={foodSafety} onChange={setFoodSafety} />
 
