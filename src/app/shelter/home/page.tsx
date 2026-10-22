@@ -14,11 +14,14 @@ import {
 import { Sidebar } from "@/components/ui/sidebar";
 import { MobileHeader, MobileBottomNav } from "@/components/ui/mobile-nav";
 import { Button } from "@/components/ui/button";
+import { OFFER_SELECT, OfferRow, OfferSummary } from "@/components/offers/offer-summary";
+import { HANDSHAKE_SELECT, PickupHandshake } from "@/components/offers/pickup-handshake";
+import { coordinatesFor, ensureProfileLocation, geocode } from "@/lib/geo";
+import { CHAT_KINDS, REQUEST_KINDS, useNotifications } from "@/lib/notifications";
+import { NotificationBell } from "@/components/ui/notification-bell";
 
-type Tab = "requests" | "chats" | "settings";
+type Tab = "requests" | "chats";
 type RequestViewFilter = "active" | "all" | "open" | "matched" | "completed";
-
-type SettingsTab = "account" | "location" | "security";
 
 type RequestRow = {
   id: string;
@@ -40,6 +43,9 @@ type RequestRow = {
   city: string | null;
   state: string | null;
   zip_code: string | null;
+  restaurant_pickup_confirmed_at: string | null;
+  shelter_pickup_confirmed_at: string | null;
+  latitude: number | null;
 };
 
 type ResponseRow = {
@@ -51,6 +57,7 @@ type ResponseRow = {
   response_note: string | null;
   status: "pending" | "accepted" | "rejected" | "cancelled";
   created_at: string;
+  offer: OfferRow | null;
 };
 
 type ProfileRow = {
@@ -63,6 +70,8 @@ type ProfileRow = {
   state: string | null;
   zip_code: string | null;
   organization_notes: string | null;
+  latitude: number | null;
+  longitude: number | null;
 };
 
 type NewRequestState = {
@@ -133,26 +142,10 @@ const initialRequestState: NewRequestState = {
   locationZip: "",
 };
 
-function isMissingShelterRequestsColumnError(
-  error: { code?: string; message?: string } | null,
-  column: string
-): boolean {
-  if (!error) return false;
-
-  if (error.code === "42703") return true;
-
-  // PostgREST can return schema cache misses as PGRST204 instead of SQL 42703.
-  if (error.code !== "PGRST204") return false;
-
-  const message = (error.message || "").toLowerCase();
-  return message.includes("schema cache") && message.includes(`'${column.toLowerCase()}'`);
-}
-
 export default function ShelterHomePage() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<Tab>("requests");
-  const [activeSettingsTab, setActiveSettingsTab] = useState<SettingsTab>("account");
-  const [requestView, setRequestView] = useState<RequestViewFilter>("open");
+  const [requestView, setRequestView] = useState<RequestViewFilter>("active");
   const [loading, setLoading] = useState(true);
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
@@ -163,16 +156,12 @@ export default function ShelterHomePage() {
   const [chatInboxItems, setChatInboxItems] = useState<ChatInboxItem[]>([]);
   const [newRequest, setNewRequest] = useState<NewRequestState>(initialRequestState);
   const [editState, setEditState] = useState<EditState | null>(null);
-  const [name, setName] = useState("");
-  const [phone, setPhone] = useState("");
-  const [email, setEmail] = useState("");
-  const [address, setAddress] = useState("");
-  const [city, setCity] = useState("");
-  const [state, setState] = useState("");
-  const [zip, setZip] = useState("");
-  const [newPassword, setNewPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
   const [showCreateForm, setShowCreateForm] = useState(false);
+  const notifications = useNotifications(userId);
+  const newRequestIds = notifications.unreadRequestIds(REQUEST_KINDS);
+  const unreadChatIds = notifications.unreadRequestIds(CHAT_KINDS);
+  const { markRead } = notifications;
+  const hasUnreadRequestNews = newRequestIds.size > 0;
 
   const loadDashboard = async (silent = false) => {
     if (!silent) {
@@ -206,66 +195,19 @@ export default function ShelterHomePage() {
 
     const { data: profileRow } = await supabase
       .from("profiles")
-      .select("id, name, email, phone, address, city, state, zip_code, organization_notes")
+      .select("id, name, email, phone, address, city, state, zip_code, organization_notes, latitude, longitude")
       .eq("id", user.id)
       .single();
 
-    if (profileRow) {
-      setProfile(profileRow as ProfileRow);
-      setName(profileRow.name || "");
-      setPhone(profileRow.phone || "");
-      setEmail(profileRow.email || user.email || "");
-      setAddress(profileRow.address || "");
-      setCity(profileRow.city || "");
-      setState(profileRow.state || "");
-      setZip(profileRow.zip_code || "");
-    } else {
-      setEmail(user.email || "");
-    }
+    setProfile((profileRow as ProfileRow) || null);
 
-    const requestSelect =
-      "id, title, request_type, quantity, food_needed, food_restrictions, pickup_window, urgency, notes, coordination_notes, status, created_at, matched_donation_id, shelter_contact_email, shelter_contact_phone, address, city, state, zip_code";
+    const requestSelect = `id, title, request_type, quantity, food_needed, food_restrictions, pickup_window, urgency, notes, coordination_notes, status, created_at, matched_donation_id, shelter_contact_email, shelter_contact_phone, address, city, state, zip_code, latitude, ${HANDSHAKE_SELECT}`;
 
-    let requestRows: any[] | null = null;
-    let requestError: { code?: string; message: string } | null = null;
-
-    const withRequestType = await supabase
+    const { data: requestRows, error: requestError } = await supabase
       .from("shelter_requests")
       .select(requestSelect)
       .eq("shelter_id", user.id)
       .order("created_at", { ascending: false });
-
-    requestRows = withRequestType.data;
-    requestError = withRequestType.error;
-
-    if (isMissingShelterRequestsColumnError(requestError, "request_type")) {
-      const withoutRequestType = await supabase
-        .from("shelter_requests")
-        .select(
-          "id, title, quantity, food_needed, food_restrictions, pickup_window, urgency, notes, coordination_notes, status, created_at, matched_donation_id, shelter_contact_email, shelter_contact_phone, address, city, state, zip_code"
-        )
-        .eq("shelter_id", user.id)
-        .order("created_at", { ascending: false });
-
-      requestRows = withoutRequestType.data;
-      requestError = withoutRequestType.error;
-
-      if (
-        isMissingShelterRequestsColumnError(requestError, "shelter_contact_email") ||
-        isMissingShelterRequestsColumnError(requestError, "shelter_contact_phone")
-      ) {
-        const legacyWithoutSnapshot = await supabase
-          .from("shelter_requests")
-          .select(
-            "id, title, quantity, food_needed, food_restrictions, pickup_window, urgency, notes, coordination_notes, status, created_at, matched_donation_id, address, city, state, zip_code"
-          )
-          .eq("shelter_id", user.id)
-          .order("created_at", { ascending: false });
-
-        requestRows = legacyWithoutSnapshot.data;
-        requestError = legacyWithoutSnapshot.error;
-      }
-    }
 
     if (requestError) {
       setStatusMsg(`Failed to load requests: ${requestError.message}`);
@@ -284,6 +226,7 @@ export default function ShelterHomePage() {
       shelter_contact_phone: row.shelter_contact_phone || null,
     }));
     setRequests(parsedRequests);
+    if (!silent) void backfillLocations(user.id, profileRow as ProfileRow | null, parsedRequests);
 
     const requestIds = parsedRequests.map((row) => row.id);
     if (requestIds.length === 0) {
@@ -296,7 +239,7 @@ export default function ShelterHomePage() {
 
     const { data: responseRows } = await supabase
       .from("request_responses")
-      .select("id, request_id, restaurant_id, donation_id, proposed_pickup_window, response_note, status, created_at")
+      .select(`id, request_id, restaurant_id, donation_id, proposed_pickup_window, response_note, status, created_at, offer:donations(${OFFER_SELECT})`)
       .in("request_id", requestIds)
       .order("created_at", { ascending: false });
 
@@ -374,7 +317,31 @@ export default function ShelterHomePage() {
     if (!silent) setLoading(false);
   };
 
+  // Accounts and requests created before location support have no
+  // coordinates; geocode them so restaurants can sort by distance.
+  const backfillLocations = async (shelterId: string, profileRow: ProfileRow | null, rows: RequestRow[]) => {
+    if (profileRow && profileRow.latitude == null) await ensureProfileLocation(shelterId);
+
+    const supabase = getSupabaseClient();
+    const missing = rows.filter((row) => (row.status === "open" || row.status === "responded") && row.latitude == null && (row.address || row.zip_code));
+    for (const row of missing) {
+      const located = await geocode({ address: row.address, city: row.city, state: row.state, zip: row.zip_code });
+      if (located) {
+        await supabase.from("shelter_requests").update({ latitude: located.latitude, longitude: located.longitude }).eq("id", row.id);
+      }
+    }
+  };
+
+  // Request news is "seen" once the Requests list has been on screen for a
+  // few seconds; rows keep their "New" tag until then.
   useEffect(() => {
+    if (activeTab !== "requests" || loading || !hasUnreadRequestNews) return;
+    const timer = setTimeout(() => void markRead(null, REQUEST_KINDS), 4000);
+    return () => clearTimeout(timer);
+  }, [activeTab, loading, hasUnreadRequestNews, markRead]);
+
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("tab") === "chats") setActiveTab("chats");
     void loadDashboard();
 
     const timer = setInterval(() => {
@@ -439,9 +406,14 @@ export default function ShelterHomePage() {
       ? newRequest.locationState || null
       : profile.state || null;
     const resolvedZip = newRequest.useCustomLocation ? newRequest.locationZip || null : profile.zip_code || null;
+    const coordinates = await coordinatesFor(
+      newRequest.useCustomLocation,
+      { address: resolvedAddress, city: resolvedCity, state: resolvedState, zip: resolvedZip },
+      profile
+    );
 
     const supabase = getSupabaseClient();
-    const insertWithSnapshot = await supabase.from("shelter_requests").insert([
+    const { error } = await supabase.from("shelter_requests").insert([
       {
         shelter_id: userId,
         title: newRequest.title,
@@ -458,57 +430,10 @@ export default function ShelterHomePage() {
         city: resolvedCity,
         state: resolvedState,
         zip_code: resolvedZip,
+        ...coordinates,
         status: "open",
       },
     ]);
-
-    let error = insertWithSnapshot.error;
-    if (isMissingShelterRequestsColumnError(error, "request_type")) {
-      const withoutRequestType = await supabase.from("shelter_requests").insert([
-        {
-          shelter_id: userId,
-          title: newRequest.title,
-          quantity: parsedQuantity,
-          food_needed: newRequest.foodNeeded || newRequest.title,
-          food_restrictions: newRequest.restrictions || null,
-          pickup_window: newRequest.pickupWindow,
-          urgency: newRequest.urgency,
-          notes: newRequest.notes || null,
-          shelter_contact_email: resolvedContactEmail,
-          shelter_contact_phone: resolvedContactPhone,
-          address: resolvedAddress,
-          city: resolvedCity,
-          state: resolvedState,
-          zip_code: resolvedZip,
-          status: "open",
-        },
-      ]);
-      error = withoutRequestType.error;
-    }
-
-    if (
-      isMissingShelterRequestsColumnError(error, "shelter_contact_email") ||
-      isMissingShelterRequestsColumnError(error, "shelter_contact_phone")
-    ) {
-      const legacyInsert = await supabase.from("shelter_requests").insert([
-        {
-          shelter_id: userId,
-          title: newRequest.title,
-          quantity: parsedQuantity,
-          food_needed: newRequest.foodNeeded || newRequest.title,
-          food_restrictions: newRequest.restrictions || null,
-          pickup_window: newRequest.pickupWindow,
-          urgency: newRequest.urgency,
-          notes: newRequest.notes || null,
-          address: resolvedAddress,
-          city: resolvedCity,
-          state: resolvedState,
-          zip_code: resolvedZip,
-          status: "open",
-        },
-      ]);
-      error = legacyInsert.error;
-    }
 
     if (error) {
       setStatusMsg(`Failed to create request: ${error.message}`);
@@ -516,8 +441,8 @@ export default function ShelterHomePage() {
     }
 
     setNewRequest(initialRequestState);
-    setStatusMsg("Request created.");
     await loadDashboard();
+    setStatusMsg("Request created.");
   };
 
   const startEdit = (row: RequestRow) => {
@@ -552,6 +477,14 @@ export default function ShelterHomePage() {
     if (canEditCoreRequestFields(row.status)) {
       const quantity = Number.parseInt(editState.quantity, 10);
       const parsedQuantity = Number.isNaN(quantity) ? null : quantity;
+      const locationChanged =
+        (editState.locationAddress || null) !== row.address ||
+        (editState.locationCity || null) !== row.city ||
+        (editState.locationState || null) !== row.state ||
+        (editState.locationZip || null) !== row.zip_code;
+      const located = locationChanged
+        ? await geocode({ address: editState.locationAddress, city: editState.locationCity, state: editState.locationState, zip: editState.locationZip })
+        : null;
 
       const { error } = await supabase
         .from("shelter_requests")
@@ -570,40 +503,14 @@ export default function ShelterHomePage() {
           city: editState.locationCity || null,
           state: editState.locationState || null,
           zip_code: editState.locationZip || null,
+          ...(locationChanged ? { latitude: located?.latitude ?? null, longitude: located?.longitude ?? null } : {}),
         })
         .eq("id", row.id)
         .eq("status", "open");
 
       if (error) {
-        if (isMissingShelterRequestsColumnError(error, "request_type")) {
-          const legacyUpdate = await supabase
-            .from("shelter_requests")
-            .update({
-              title: editState.title,
-              quantity: parsedQuantity,
-              food_needed: editState.foodNeeded || editState.title,
-              food_restrictions: editState.restrictions || null,
-              pickup_window: editState.pickupWindow,
-              urgency: editState.urgency,
-              notes: editState.notes || null,
-              shelter_contact_email: editState.contactEmail || null,
-              shelter_contact_phone: editState.contactPhone || null,
-              address: editState.locationAddress || null,
-              city: editState.locationCity || null,
-              state: editState.locationState || null,
-              zip_code: editState.locationZip || null,
-            })
-            .eq("id", row.id)
-            .eq("status", "open");
-
-          if (legacyUpdate.error) {
-            setStatusMsg(`Failed to update request: ${legacyUpdate.error.message}`);
-            return;
-          }
-        } else {
-          setStatusMsg(`Failed to update request: ${error.message}`);
-          return;
-        }
+        setStatusMsg(`Failed to update request: ${error.message}`);
+        return;
       }
     } else if (canEditPickupWindow(row.status)) {
       const { error } = await supabase
@@ -622,95 +529,23 @@ export default function ShelterHomePage() {
     }
 
     setEditState(null);
-    setStatusMsg("Request updated.");
     await loadDashboard();
+    setStatusMsg("Request updated.");
   };
 
-  const updateRequestStatus = async (requestId: string, nextStatus: "completed" | "cancelled") => {
+  const updateRequestStatus = async (requestId: string, nextStatus: "cancelled") => {
     const supabase = getSupabaseClient();
+    const { error } = await supabase.rpc("cancel_request", {
+      p_request_id: requestId,
+    });
 
-    let matchedDonationId = requests.find((row) => row.id === requestId)?.matched_donation_id || null;
-
-    if (nextStatus === "completed") {
-      const completedUpdate = await supabase
-        .from("shelter_requests")
-        .update({ status: "completed" })
-        .eq("id", requestId)
-        .eq("status", "matched");
-
-      if (completedUpdate.error) {
-        // Backward compatibility for schemas that still use "fulfilled".
-        if (completedUpdate.error.code === "22P02" || completedUpdate.error.code === "23514") {
-          const fulfilledUpdate = await supabase
-            .from("shelter_requests")
-            .update({ status: "fulfilled" })
-            .eq("id", requestId)
-            .eq("status", "matched");
-
-          if (fulfilledUpdate.error) {
-            setStatusMsg(`Failed to update status: ${fulfilledUpdate.error.message}`);
-            return;
-          }
-        } else {
-          setStatusMsg(`Failed to update status: ${completedUpdate.error.message}`);
-          return;
-        }
-      }
-
-      if (!matchedDonationId) {
-        const { data: acceptedResponse, error: acceptedResponseError } = await supabase
-          .from("request_responses")
-          .select("donation_id")
-          .eq("request_id", requestId)
-          .eq("status", "accepted")
-          .maybeSingle();
-
-        if (!acceptedResponseError) {
-          matchedDonationId = acceptedResponse?.donation_id || null;
-
-          if (matchedDonationId) {
-            await supabase
-              .from("shelter_requests")
-              .update({ matched_donation_id: matchedDonationId })
-              .eq("id", requestId)
-              .is("matched_donation_id", null);
-          }
-        }
-      }
-
-      if (matchedDonationId) {
-        const { error: donationUpdateError } = await supabase
-          .from("donations")
-          .update({ status: "completed" })
-          .eq("id", matchedDonationId)
-          .eq("matched_shelter_id", userId);
-
-        if (donationUpdateError) {
-          // Backward compatibility for environments that do not yet allow "completed" on donations.
-          if (donationUpdateError.code === "22P02" || donationUpdateError.code === "23514") {
-            await supabase
-              .from("donations")
-              .update({ status: "fulfilled" })
-              .eq("id", matchedDonationId)
-              .eq("matched_shelter_id", userId);
-          }
-        }
-      }
-    } else {
-      const { error } = await supabase
-        .from("shelter_requests")
-        .update({ status: "cancelled" })
-        .eq("id", requestId)
-        .in("status", ["open", "responded"]);
-
-      if (error) {
-        setStatusMsg(`Failed to update status: ${error.message}`);
-        return;
-      }
+    if (error) {
+      setStatusMsg(`Failed to update status: ${error.message}`);
+      return;
     }
 
-    setStatusMsg(`Request marked ${nextStatus}.`);
     await loadDashboard();
+    setStatusMsg(`Request marked ${nextStatus}.`);
   };
 
   const acceptResponse = async (request: RequestRow, response: ResponseRow) => {
@@ -718,64 +553,18 @@ export default function ShelterHomePage() {
 
     const supabase = getSupabaseClient();
 
-    const rpcResult = await supabase.rpc("accept_request_response", {
+    const { error } = await supabase.rpc("accept_request_response", {
       p_request_id: request.id,
       p_response_id: response.id,
     });
 
-    if (rpcResult.error) {
-      const rpcMissing = rpcResult.error.code === "PGRST202" || rpcResult.error.code === "42883";
-
-      if (!rpcMissing) {
-        setStatusMsg(`Failed to accept response: ${rpcResult.error.message}`);
-        return;
-      }
-
-      // Backward-compatible fallback while database migrations or schema cache catch up.
-      const { error: requestError } = await supabase
-        .from("shelter_requests")
-        .update({
-          status: "matched",
-          matched_donation_id: response.donation_id,
-          pickup_window: response.proposed_pickup_window || request.pickup_window,
-        })
-        .eq("id", request.id)
-        .in("status", ["open", "responded"]);
-
-      if (requestError) {
-        setStatusMsg(`Failed to match request: ${requestError.message}`);
-        return;
-      }
-
-      const { error: acceptError } = await supabase
-        .from("request_responses")
-        .update({ status: "accepted" })
-        .eq("id", response.id)
-        .eq("request_id", request.id)
-        .eq("status", "pending");
-
-      if (acceptError) {
-        setStatusMsg(`Failed to accept response: ${acceptError.message}`);
-        return;
-      }
-
-      await supabase
-        .from("request_responses")
-        .update({ status: "rejected" })
-        .eq("request_id", request.id)
-        .eq("status", "pending")
-        .neq("id", response.id);
-
-      if (response.donation_id) {
-        await supabase
-          .from("donations")
-          .update({ status: "matched", matched_shelter_id: userId })
-          .eq("id", response.donation_id);
-      }
+    if (error) {
+      setStatusMsg(`Failed to accept response: ${error.message}`);
+      return;
     }
 
-    setStatusMsg("Response accepted and request matched.");
     await loadDashboard();
+    setStatusMsg("Response accepted and request matched.");
   };
 
   const activeRequests = useMemo(
@@ -787,7 +576,7 @@ export default function ShelterHomePage() {
     if (requestView === "active") return activeRequests;
     if (requestView === "open") return requests.filter((r) => r.status === "open" || r.status === "responded");
     if (requestView === "matched") return requests.filter((r) => r.status === "matched");
-    if (requestView === "completed") return requests.filter((r) => r.status === "completed" || r.status === "fulfilled" || r.status === "cancelled");
+    if (requestView === "completed") return requests.filter((r) => r.status === "completed" || r.status === "cancelled");
     return requests;
   }, [activeRequests, requestView, requests]);
 
@@ -818,100 +607,36 @@ export default function ShelterHomePage() {
   };
 
   const navItems = [
-    { id: "requests", label: "Requests", icon: "📋", onClick: () => setActiveTab("requests") },
-    { id: "chats", label: "Chats", icon: "💬", onClick: () => setActiveTab("chats"), count: chatInboxItems.length },
-    { id: "settings", label: "Settings", icon: "⚙️", onClick: () => setActiveTab("settings") },
+    { id: "requests", label: "Requests", icon: "📋", onClick: () => setActiveTab("requests"), count: notifications.countOf(REQUEST_KINDS) },
+    { id: "chats", label: "Chats", icon: "💬", onClick: () => setActiveTab("chats"), count: notifications.countOf(CHAT_KINDS) },
+    { id: "listings", label: "Available Food", icon: "🥡", onClick: () => router.push("/shelter/listings") },
+    { id: "profile", label: "Profile", icon: "👤", onClick: () => router.push("/shelter/profile") },
+    { id: "settings", label: "Settings", icon: "⚙️", onClick: () => router.push("/shelter/settings") },
     { id: "signout", label: "Sign Out", icon: "🚪", onClick: () => void handleSignOut() },
   ];
 
-  const saveAccount = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!userId) return;
-
-    const supabase = getSupabaseClient();
-    const { error } = await supabase
-      .from("profiles")
-      .update({ name, phone, email })
-      .eq("id", userId);
-
-    if (error) {
-      setStatusMsg(`Failed to save account: ${error.message}`);
-      return;
-    }
-
-    setProfile((prev) =>
-      prev
-        ? {
-            ...prev,
-            name,
-            phone,
-            email,
-          }
-        : prev
-    );
-    setStatusMsg("Account settings saved.");
-  };
-
-  const saveLocation = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!userId) return;
-
-    const supabase = getSupabaseClient();
-    const { error } = await supabase
-      .from("profiles")
-      .update({ address, city, state, zip_code: zip })
-      .eq("id", userId);
-
-    if (error) {
-      setStatusMsg(`Failed to save location: ${error.message}`);
-      return;
-    }
-
-    setProfile((prev) =>
-      prev
-        ? {
-            ...prev,
-            address,
-            city,
-            state,
-            zip_code: zip,
-          }
-        : prev
-    );
-    setStatusMsg("Location settings saved.");
-  };
-
-  const saveSecurity = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newPassword || newPassword !== confirmPassword) {
-      setStatusMsg("Passwords must match.");
-      return;
-    }
-
-    const supabase = getSupabaseClient();
-    const { error } = await supabase.auth.updateUser({ password: newPassword });
-
-    if (error) {
-      setStatusMsg(`Failed to update password: ${error.message}`);
-      return;
-    }
-
-    setNewPassword("");
-    setConfirmPassword("");
-    setStatusMsg("Password updated.");
-  };
+  const bell = (
+    <NotificationBell
+      role="shelter"
+      items={notifications.items}
+      unreadCount={notifications.unread.length}
+      onMarkRead={(requestId) => markRead(requestId ?? null)}
+    />
+  );
 
   return (
     <div className="flex min-h-screen bg-slate-50">
       <MobileHeader
         title="Plate Share"
         subtitle="Shelter Operations"
+        action={bell}
       />
       <Sidebar
         title="Plate Share"
         subtitle="Shelter Operations"
         items={navItems}
         activeId={activeTab}
+        headerAction={bell}
       />
       <MobileBottomNav items={navItems} activeId={activeTab} />
 
@@ -919,12 +644,10 @@ export default function ShelterHomePage() {
         <div className="mx-auto max-w-7xl">
           <div className="mb-4">
             <h1 className="text-lg font-semibold text-slate-900 md:text-2xl">
-              {activeTab === "settings" ? "Shelter Profile" : activeTab === "chats" ? "Chats" : "Shelter Request Management"}
+              {activeTab === "chats" ? "Chats" : "Shelter Request Management"}
             </h1>
             <p className="text-xs text-slate-600 md:text-sm">
-              {activeTab === "settings"
-                ? "Manage account, location, and security controls."
-                : activeTab === "chats"
+              {activeTab === "chats"
                 ? "Conversations with restaurants on matched requests."
                 : "Create requests, review responses, and manage fulfillment."}
             </p>
@@ -947,7 +670,7 @@ export default function ShelterHomePage() {
                     <p className="text-[11px] text-slate-500">Matched</p>
                   </button>
                   <button onClick={() => setRequestView("completed")} className={`rounded-xl p-3 text-center transition ${requestView === "completed" ? "border-2 border-emerald-600 bg-emerald-50" : "border border-slate-200 bg-white"}`}>
-                    <p className={`text-2xl font-bold ${requestView === "completed" ? "text-emerald-700" : "text-slate-900"}`}>{requests.filter((r) => r.status === "completed" || r.status === "fulfilled" || r.status === "cancelled").length}</p>
+                    <p className={`text-2xl font-bold ${requestView === "completed" ? "text-emerald-700" : "text-slate-900"}`}>{requests.filter((r) => r.status === "completed" || r.status === "cancelled").length}</p>
                     <p className="text-[11px] text-slate-500">Completed</p>
                   </button>
                 </div>
@@ -1042,8 +765,17 @@ export default function ShelterHomePage() {
                 <div className="hidden md:flex items-center justify-between border-b border-slate-200 px-4 py-3">
                   <p className="text-sm font-medium text-slate-800">Requests</p>
                   <div className="flex items-center gap-2">
-                    <Button size="sm" variant={requestView === "active" ? "primary" : "secondary"} onClick={() => setRequestView("active")}>Active ({activeRequests.length})</Button>
-                    <Button size="sm" variant={requestView === "all" ? "primary" : "secondary"} onClick={() => setRequestView("all")}>All ({requests.length})</Button>
+                    {([
+                      ["active", "Active", activeRequests.length],
+                      ["open", "Open", requests.filter((r) => r.status === "open" || r.status === "responded").length],
+                      ["matched", "Matched", requests.filter((r) => r.status === "matched").length],
+                      ["completed", "Closed", requests.filter((r) => r.status === "completed" || r.status === "cancelled").length],
+                      ["all", "All", requests.length],
+                    ] as const).map(([view, label, count]) => (
+                      <Button key={view} size="sm" variant={requestView === view ? "primary" : "secondary"} onClick={() => setRequestView(view)}>
+                        {label} ({count})
+                      </Button>
+                    ))}
                   </div>
                 </div>
 
@@ -1060,7 +792,7 @@ export default function ShelterHomePage() {
                   <p className="px-4 py-6 text-sm text-slate-600">Loading requests...</p>
                 ) : visibleRequests.length === 0 ? (
                   <p className="px-4 py-6 text-sm text-slate-600">
-                    {requestView === "active" ? "No active requests right now." : "No requests yet. Create your first request."}
+                    {requestView === "active" ? "No active requests right now." : requests.length === 0 ? "No requests yet. Create your first request." : "No requests in this view."}
                   </p>
                 ) : (
                   visibleRequests.map((row) => {
@@ -1077,7 +809,10 @@ export default function ShelterHomePage() {
                         <div className="hidden md:block">
                           <div className="grid grid-cols-12 gap-2">
                             <div className="col-span-3">
-                              <p className="font-medium text-slate-900">{row.title}</p>
+                              <p className="font-medium text-slate-900">
+                                {row.title}
+                                {newRequestIds.has(row.id) ? <span className="ml-2 rounded-full bg-rose-600 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-white">New</span> : null}
+                              </p>
                               <p className="text-xs text-slate-500">{row.request_type || "General request"} • {row.quantity || "-"} servings</p>
                             </div>
                             <p className="col-span-1 capitalize text-slate-700">{row.urgency}</p>
@@ -1104,9 +839,6 @@ export default function ShelterHomePage() {
                             {row.status === "open" || row.status === "responded" ? (
                               <Button size="sm" variant="danger" onClick={() => void updateRequestStatus(row.id, "cancelled")}>Cancel</Button>
                             ) : null}
-                            {row.status === "matched" ? (
-                              <Button size="sm" variant="primary" onClick={() => void updateRequestStatus(row.id, "completed")}>Mark Completed</Button>
-                            ) : null}
                           </div>
                         </div>
 
@@ -1120,10 +852,13 @@ export default function ShelterHomePage() {
                             <div className="flex-1 min-w-0">
                               <div className="flex items-start justify-between gap-2">
                                 <div className="min-w-0">
-                                  <p className="font-semibold text-slate-900 truncate">{row.title}</p>
+                                  <p className="font-semibold text-slate-900 truncate">
+                                    {newRequestIds.has(row.id) ? <span className="mr-1 inline-block h-2 w-2 rounded-full bg-rose-600" /> : null}
+                                    {row.title}
+                                  </p>
                                   <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase ${
                                     row.status === "matched" ? "bg-emerald-100 text-emerald-800" :
-                                    row.status === "completed" || row.status === "fulfilled" ? "bg-blue-100 text-blue-800" :
+                                    row.status === "completed" ? "bg-blue-100 text-blue-800" :
                                     row.status === "cancelled" ? "bg-slate-100 text-slate-600" :
                                     "bg-amber-100 text-amber-800"
                                   }`}>{mapShelterStatusForUi(row.status)}</span>
@@ -1142,10 +877,7 @@ export default function ShelterHomePage() {
                             {row.status === "open" || row.status === "responded" ? (
                               <button className="rounded-full border border-red-300 bg-white px-3 py-1.5 text-xs font-medium text-red-700" onClick={() => void updateRequestStatus(row.id, "cancelled")}>Cancel</button>
                             ) : null}
-                            {row.status === "matched" ? (
-                              <button className="rounded-full bg-emerald-800 px-3 py-1.5 text-xs font-medium text-white" onClick={() => void updateRequestStatus(row.id, "completed")}>Complete</button>
-                            ) : null}
-                            {row.status === "completed" || row.status === "fulfilled" ? (
+                            {row.status === "completed" ? (
                               <span className="flex items-center text-xs text-emerald-700 font-medium">Delivered ✓</span>
                             ) : null}
                           </div>
@@ -1203,6 +935,7 @@ export default function ShelterHomePage() {
                                   <div className="min-w-0">
                                     <p className="text-sm font-medium text-slate-900">{restaurantNames[response.restaurant_id] || "Restaurant"}</p>
                                     <p className="text-xs text-slate-600">Proposed pickup: {response.proposed_pickup_window || "Not provided"}</p>
+                                    <OfferSummary offer={response.offer} />
                                     {response.response_note ? <p className="text-xs text-slate-500">{response.response_note}</p> : null}
                                   </div>
                                   <Button size="sm" variant="primary" onClick={() => void acceptResponse(row, response)}>Accept</Button>
@@ -1225,8 +958,21 @@ export default function ShelterHomePage() {
                                 <p className="text-xs text-slate-700">
                                   Confirmed pickup: {acceptedResponse.proposed_pickup_window || row.pickup_window || "Not set"}
                                 </p>
+                                <OfferSummary offer={acceptedResponse.offer} />
                               </div>
                               <Button size="sm" variant="secondary" onClick={() => router.push(`/shelter/chat/${row.id}`)}>Open Chat</Button>
+                            </div>
+                            <div className="mt-2">
+                              <PickupHandshake
+                                requestId={row.id}
+                                role="shelter"
+                                restaurantConfirmedAt={row.restaurant_pickup_confirmed_at}
+                                shelterConfirmedAt={row.shelter_pickup_confirmed_at}
+                                onChange={async (message) => {
+                                  await loadDashboard();
+                                  setStatusMsg(message);
+                                }}
+                              />
                             </div>
                           </div>
                         ) : null}
@@ -1236,7 +982,7 @@ export default function ShelterHomePage() {
                 )}
               </section>
             </div>
-          ) : activeTab === "chats" ? (
+          ) : (
             <section className="rounded-xl border border-slate-200 bg-white p-0 md:rounded">
               <div className="px-4 py-3 border-b border-slate-200">
                 <p className="text-sm font-semibold text-slate-900">Matched Chats</p>
@@ -1256,7 +1002,10 @@ export default function ShelterHomePage() {
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between gap-2">
-                        <p className="text-sm font-semibold text-slate-900 truncate">{item.partnerName}</p>
+                        <p className={`text-sm truncate text-slate-900 ${unreadChatIds.has(item.requestId) ? "font-bold" : "font-semibold"}`}>
+                          {unreadChatIds.has(item.requestId) ? <span className="mr-1.5 inline-block h-2 w-2 rounded-full bg-rose-600" /> : null}
+                          {item.partnerName}
+                        </p>
                         <p className="shrink-0 text-[10px] text-slate-400">{item.timestamp}</p>
                       </div>
                       <p className="text-xs text-slate-500 truncate">{item.requestTitle}</p>
@@ -1265,88 +1014,6 @@ export default function ShelterHomePage() {
                   </button>
                 ))
               )}
-            </section>
-          ) : (
-            <section className="space-y-4">
-              <div className="flex gap-2 overflow-x-auto pb-1 md:overflow-visible md:pb-0">
-                <Button variant={activeSettingsTab === "account" ? "primary" : "secondary"} className="shrink-0 whitespace-nowrap" onClick={() => setActiveSettingsTab("account")}>Account</Button>
-                <Button variant={activeSettingsTab === "location" ? "primary" : "secondary"} className="shrink-0 whitespace-nowrap" onClick={() => setActiveSettingsTab("location")}>Location</Button>
-                <Button variant={activeSettingsTab === "security" ? "primary" : "secondary"} className="shrink-0 whitespace-nowrap" onClick={() => setActiveSettingsTab("security")}>Security</Button>
-              </div>
-
-              <section className="rounded border border-slate-200 bg-white p-4 text-sm text-slate-700">
-                {loading ? (
-                  <p>Loading settings...</p>
-                ) : activeSettingsTab === "account" ? (
-                  <form className="grid grid-cols-1 gap-4 md:grid-cols-2" onSubmit={saveAccount}>
-                    <div>
-                      <label className="mb-1 block text-sm text-slate-700">Shelter name</label>
-                      <input className="h-10 w-full rounded border border-slate-300 px-3 text-sm" value={name} onChange={(e) => setName(e.target.value)} placeholder="Shelter display name" />
-                    </div>
-                    <div>
-                      <label className="mb-1 block text-sm text-slate-700">Phone</label>
-                      <input className="h-10 w-full rounded border border-slate-300 px-3 text-sm" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="(555) 555-5555" />
-                    </div>
-                    <div className="md:col-span-2">
-                      <label className="mb-1 block text-sm text-slate-700">Email</label>
-                      <input className="h-10 w-full rounded border border-slate-300 px-3 text-sm" value={email} onChange={(e) => setEmail(e.target.value)} type="email" />
-                    </div>
-                    <div className="md:col-span-2">
-                      <Button type="submit" variant="primary">Save account</Button>
-                    </div>
-                  </form>
-                ) : activeSettingsTab === "location" ? (
-                  <form className="grid grid-cols-1 gap-4 md:grid-cols-2" onSubmit={saveLocation}>
-                    <div className="md:col-span-2">
-                      <label className="mb-1 block text-sm text-slate-700">Address</label>
-                      <input className="h-10 w-full rounded border border-slate-300 px-3 text-sm" value={address} onChange={(e) => setAddress(e.target.value)} placeholder="123 Main St" />
-                    </div>
-                    <div>
-                      <label className="mb-1 block text-sm text-slate-700">City</label>
-                      <input className="h-10 w-full rounded border border-slate-300 px-3 text-sm" value={city} onChange={(e) => setCity(e.target.value)} placeholder="San Jose" />
-                    </div>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <label className="mb-1 block text-sm text-slate-700">State</label>
-                        <input className="h-10 w-full rounded border border-slate-300 px-3 text-sm" value={state} onChange={(e) => setState(e.target.value)} maxLength={2} placeholder="CA" />
-                      </div>
-                      <div>
-                        <label className="mb-1 block text-sm text-slate-700">ZIP</label>
-                        <input className="h-10 w-full rounded border border-slate-300 px-3 text-sm" value={zip} onChange={(e) => setZip(e.target.value)} maxLength={5} placeholder="95112" />
-                      </div>
-                    </div>
-                    <div className="md:col-span-2">
-                      <Button type="submit" variant="primary">Save location</Button>
-                    </div>
-                  </form>
-                ) : (
-                  <form className="grid grid-cols-1 gap-4 md:grid-cols-2" onSubmit={saveSecurity}>
-                    <div>
-                      <label className="mb-1 block text-sm text-slate-700">New password</label>
-                      <input
-                        className="h-10 w-full rounded border border-slate-300 px-3 text-sm"
-                        type="password"
-                        minLength={6}
-                        value={newPassword}
-                        onChange={(e) => setNewPassword(e.target.value)}
-                      />
-                    </div>
-                    <div>
-                      <label className="mb-1 block text-sm text-slate-700">Confirm password</label>
-                      <input
-                        className="h-10 w-full rounded border border-slate-300 px-3 text-sm"
-                        type="password"
-                        minLength={6}
-                        value={confirmPassword}
-                        onChange={(e) => setConfirmPassword(e.target.value)}
-                      />
-                    </div>
-                    <div className="md:col-span-2">
-                      <Button type="submit" variant="primary">Update password</Button>
-                    </div>
-                  </form>
-                )}
-              </section>
             </section>
           )}
         </div>

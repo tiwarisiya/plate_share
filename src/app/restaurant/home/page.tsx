@@ -12,6 +12,9 @@ import {
 import { Sidebar } from "@/components/ui/sidebar";
 import { MobileHeader, MobileBottomNav } from "@/components/ui/mobile-nav";
 import { Button } from "@/components/ui/button";
+import { CHAT_KINDS, NotificationKind, useNotifications } from "@/lib/notifications";
+import { NotificationBell } from "@/components/ui/notification-bell";
+import { Coordinates, ProfileLocation, distanceMiles, ensureProfileLocation, formatDistance, geocode, sortByDistance } from "@/lib/geo";
 
 type Tab = "open" | "matched" | "completed";
 type ScreenTab = "requests" | "chats";
@@ -28,9 +31,12 @@ type RequestRow = {
   notes: string | null;
   city: string | null;
   state: string | null;
+  zip_code: string | null;
   status: ShelterRequestStatus;
   created_at: string;
   matched_donation_id: string | null;
+  latitude: number | null;
+  longitude: number | null;
 };
 
 type ResponseRow = {
@@ -60,6 +66,9 @@ type ChatInboxItem = {
   sortAt: number;
 };
 
+// Request news a restaurant sees on its Matched tab.
+const MATCH_KINDS: NotificationKind[] = ["response_accepted", "listing_claimed"];
+
 type ShelterSummary = {
   id: string;
   name: string | null;
@@ -78,6 +87,15 @@ export default function RestaurantHome() {
   const [shelterNamesById, setShelterNamesById] = useState<Record<string, string>>({});
   const [myResponseByRequestId, setMyResponseByRequestId] = useState<Record<string, ResponseRow>>({});
   const [chatInboxItems, setChatInboxItems] = useState<ChatInboxItem[]>([]);
+  const [myLocation, setMyLocation] = useState<ProfileLocation | null>(null);
+  const [withinRadiusOnly, setWithinRadiusOnly] = useState(true);
+  const [userId, setUserId] = useState<string | null>(null);
+  const [zipCentroids, setZipCentroids] = useState<Record<string, Coordinates>>({});
+  const notifications = useNotifications(userId);
+  const { markRead } = notifications;
+  const matchedIds = notifications.unreadRequestIds(MATCH_KINDS);
+  const unreadChatIds = notifications.unreadRequestIds(CHAT_KINDS);
+  const hasUnreadMatches = matchedIds.size > 0;
 
   const loadDashboard = async (silent = false) => {
     if (!silent) {
@@ -107,11 +125,14 @@ export default function RestaurantHome() {
       return;
     }
 
+    setUserId(user.id);
+    if (!silent) setMyLocation(await ensureProfileLocation(user.id));
+
     const [{ data: requestRows, error: requestError }, { data: myResponses, error: responsesError }] = await Promise.all([
       supabase
         .from("shelter_requests")
-        .select("id, shelter_id, title, quantity, food_needed, pickup_window, urgency, notes, city, state, status, created_at, matched_donation_id")
-        .in("status", ["open", "responded", "matched", "completed", "fulfilled", "cancelled"])
+        .select("id, shelter_id, title, quantity, food_needed, pickup_window, urgency, notes, city, state, zip_code, status, created_at, matched_donation_id, latitude, longitude")
+        .in("status", ["open", "responded", "matched", "completed", "cancelled"])
         .order("created_at", { ascending: false }),
       supabase
         .from("request_responses")
@@ -170,10 +191,11 @@ export default function RestaurantHome() {
     const matched = parsedRequests.filter((row) => row.status === "matched");
 
     const completed = parsedRequests.filter(
-      (row) => row.status === "completed" || row.status === "fulfilled" || row.status === "cancelled"
+      (row) => row.status === "completed" || row.status === "cancelled"
     );
 
     setOpenRequests(openQueue);
+    if (!silent) void estimateMissingLocations(openQueue);
     setMatchedRequests(matched);
     setCompletedRequests(completed);
 
@@ -225,7 +247,16 @@ export default function RestaurantHome() {
     if (!silent) setLoading(false);
   };
 
+  // Matches are "seen" once the Matched list has been on screen for a few
+  // seconds; rows keep their "New" tag until then.
   useEffect(() => {
+    if (activeTab !== "requests" || requestTab !== "matched" || loading || !hasUnreadMatches) return;
+    const timer = setTimeout(() => void markRead(null, MATCH_KINDS), 4000);
+    return () => clearTimeout(timer);
+  }, [activeTab, requestTab, loading, hasUnreadMatches, markRead]);
+
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("tab") === "chats") setActiveTab("chats");
     void loadDashboard();
 
     const timer = setInterval(() => {
@@ -258,10 +289,42 @@ export default function RestaurantHome() {
     };
   }, []);
 
+  // Requests created before location support have no coordinates until
+  // their shelter signs in again; estimate those from the ZIP code.
+  const estimateMissingLocations = async (rows: RequestRow[]) => {
+    const zips = Array.from(new Set(rows.filter((row) => row.latitude == null && row.zip_code).map((row) => row.zip_code as string)));
+    const found: Record<string, Coordinates> = {};
+    for (const zip of zips) {
+      const located = await geocode({ address: null, city: null, state: null, zip });
+      if (located) found[zip] = { latitude: located.latitude, longitude: located.longitude };
+    }
+    if (Object.keys(found).length > 0) setZipCentroids((prev) => ({ ...prev, ...found }));
+  };
+
+  const locationOf = (row: RequestRow) =>
+    row.latitude != null ? row : (row.zip_code && zipCentroids[row.zip_code]) || null;
+
+  const distanceTo = (row: RequestRow) => distanceMiles(myLocation, locationOf(row));
+
+  // Nearest first. With the radius filter on, requests outside the service
+  // radius are hidden; requests without coordinates are always shown.
+  const visibleOpenRequests = useMemo(() => {
+    const sorted = sortByDistance(openRequests, (row) => distanceMiles(myLocation, locationOf(row)));
+    if (!withinRadiusOnly || !myLocation || myLocation.latitude === null) return sorted;
+    return sorted.filter((row) => {
+      const miles = distanceMiles(myLocation, locationOf(row));
+      return miles === null || miles <= myLocation.service_radius_miles;
+    });
+    // locationOf only reads zipCentroids
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openRequests, myLocation, withinRadiusOnly, zipCentroids]);
+
+  const hiddenByRadius = openRequests.length - visibleOpenRequests.length;
+
   const getRespondAction = (row: RequestRow): { canRespond: boolean; label: string } => {
     const myResponse = myResponseByRequestId[row.id];
 
-    if (row.status === "matched" || row.status === "completed" || row.status === "fulfilled" || row.status === "cancelled") {
+    if (row.status === "matched" || row.status === "completed" || row.status === "cancelled") {
       return { canRespond: false, label: "Request unavailable" };
     }
 
@@ -292,22 +355,36 @@ export default function RestaurantHome() {
   };
 
   const navItems = [
-    { id: "requests", label: "Requests", icon: "📋", onClick: () => setActiveTab("requests") },
-    { id: "chats", label: "Chats", icon: "💬", onClick: () => setActiveTab("chats"), count: chatInboxItems.length },
+    { id: "requests", label: "Requests", icon: "📋", onClick: () => setActiveTab("requests"), count: notifications.countOf(MATCH_KINDS) },
+    { id: "chats", label: "Chats", icon: "💬", onClick: () => setActiveTab("chats"), count: notifications.countOf(CHAT_KINDS) },
+    { id: "listings", label: "Listings", icon: "🥡", onClick: () => router.push("/restaurant/listings") },
+    { id: "profile", label: "Profile", icon: "👤", onClick: () => router.push("/restaurant/profile") },
+    { id: "settings", label: "Settings", icon: "⚙️", onClick: () => router.push("/restaurant/settings") },
     { id: "signout", label: "Sign Out", icon: "🚪", onClick: () => void handleSignOut() },
   ];
+
+  const bell = (
+    <NotificationBell
+      role="restaurant"
+      items={notifications.items}
+      unreadCount={notifications.unread.length}
+      onMarkRead={(requestId) => markRead(requestId ?? null)}
+    />
+  );
 
   return (
     <div className="flex min-h-screen bg-slate-50">
       <MobileHeader
         title="Plate Share"
         subtitle="Restaurant Operations"
+        action={bell}
       />
       <Sidebar
         title="Plate Share"
         subtitle="Restaurant Operations"
         activeId={activeTab}
         items={navItems}
+        headerAction={bell}
       />
       <MobileBottomNav items={navItems} activeId={activeTab} />
 
@@ -339,7 +416,7 @@ export default function RestaurantHome() {
             <div className="mb-4 md:hidden space-y-3">
               <div className="grid grid-cols-3 gap-3">
                 <button onClick={() => setRequestTab("open")} className={`rounded-xl p-3 text-center transition ${requestTab === "open" ? "border-2 border-emerald-600 bg-emerald-50" : "border border-slate-200 bg-white"}`}>
-                  <p className={`text-2xl font-bold ${requestTab === "open" ? "text-emerald-700" : "text-slate-900"}`}>{openRequests.length}</p>
+                  <p className={`text-2xl font-bold ${requestTab === "open" ? "text-emerald-700" : "text-slate-900"}`}>{visibleOpenRequests.length}</p>
                   <p className="text-[11px] text-slate-500">Open<br />Requests</p>
                 </button>
                 <button onClick={() => setRequestTab("matched")} className={`rounded-xl p-3 text-center transition ${requestTab === "matched" ? "border-2 border-emerald-600 bg-emerald-50" : "border border-slate-200 bg-white"}`}>
@@ -361,103 +438,114 @@ export default function RestaurantHome() {
             {loading ? (
               <p className="px-4 py-6 text-sm text-slate-600">Loading requests...</p>
             ) : requestTab === "open" ? (
-              openRequests.length === 0 ? (
-                <p className="px-4 py-6 text-sm text-slate-600">No open requests available right now.</p>
-              ) : (
-                <>
-                  <div className="hidden md:grid grid-cols-12 gap-2 border-b border-slate-200 px-4 py-3 text-xs uppercase text-slate-500">
-                    <p className="col-span-3">Request</p>
-                    <p className="col-span-2">Shelter</p>
-                    <p className="col-span-2">Servings</p>
-                    <p className="col-span-2">Food Type</p>
-                    <p className="col-span-2">Pickup</p>
-                    <p className="col-span-1">Urgency</p>
-                    <p className="col-span-12 text-[10px] text-slate-400">Includes open and responded requests, even if you already submitted a pending response.</p>
-                  </div>
-                  {openRequests.map((row) => {
-                    const respondAction = getRespondAction(row);
-                    return (
-                    <div key={row.id} className="border-t border-slate-200 px-3 py-3 text-sm md:px-4">
-                      {/* Desktop table row */}
-                      <div className="hidden md:block">
-                        <div className="grid grid-cols-12 gap-2">
-                          <div className="col-span-3">
-                            <p className="font-medium text-slate-900">{row.title}</p>
-                            <p className="text-xs text-slate-500">{row.city || "City"}, {row.state || "ST"}</p>
+              <>
+                {myLocation && myLocation.latitude !== null ? (
+                  <label className="flex items-center gap-2 border-b border-slate-200 px-4 py-2 text-xs text-slate-600">
+                    <input type="checkbox" checked={withinRadiusOnly} onChange={(e) => setWithinRadiusOnly(e.target.checked)} />
+                    Only within my {myLocation.service_radius_miles} mi service radius
+                    {withinRadiusOnly && hiddenByRadius > 0 ? <span className="text-slate-400">({hiddenByRadius} farther away hidden)</span> : null}
+                  </label>
+                ) : (
+                  <p className="border-b border-slate-200 px-4 py-2 text-xs text-slate-500">Add your address in Settings to sort requests by distance.</p>
+                )}
+                {visibleOpenRequests.length === 0 ? (
+                  <p className="px-4 py-6 text-sm text-slate-600">No open requests available right now.</p>
+                ) : (
+                  <>
+                    <div className="hidden md:grid grid-cols-12 gap-2 border-b border-slate-200 px-4 py-3 text-xs uppercase text-slate-500">
+                      <p className="col-span-3">Request</p>
+                      <p className="col-span-2">Shelter</p>
+                      <p className="col-span-2">Servings</p>
+                      <p className="col-span-2">Food Type</p>
+                      <p className="col-span-2">Pickup</p>
+                      <p className="col-span-1">Urgency</p>
+                      <p className="col-span-12 text-[10px] text-slate-400">Includes open and responded requests, even if you already submitted a pending response.</p>
+                    </div>
+                    {visibleOpenRequests.map((row) => {
+                      const respondAction = getRespondAction(row);
+                      return (
+                      <div key={row.id} className="border-t border-slate-200 px-3 py-3 text-sm md:px-4">
+                        {/* Desktop table row */}
+                        <div className="hidden md:block">
+                          <div className="grid grid-cols-12 gap-2">
+                            <div className="col-span-3">
+                              <p className="font-medium text-slate-900">{row.title}</p>
+                              <p className="text-xs text-slate-500">{row.city || "City"}, {row.state || "ST"} • {row.latitude == null && distanceTo(row) !== null ? "~" : ""}{formatDistance(distanceTo(row))}</p>
+                            </div>
+                            <p className="col-span-2 text-slate-700">{shelterNamesById[row.shelter_id] || "Shelter"}</p>
+                            <p className="col-span-2 text-slate-700">{row.quantity || "-"}</p>
+                            <p className="col-span-2 text-slate-700">{row.food_needed || "Not specified"}</p>
+                            <p className="col-span-2 text-slate-700">{row.pickup_window || "Not set"}</p>
+                            <p className="col-span-1 capitalize text-slate-700">{row.urgency}</p>
                           </div>
-                          <p className="col-span-2 text-slate-700">{shelterNamesById[row.shelter_id] || "Shelter"}</p>
-                          <p className="col-span-2 text-slate-700">{row.quantity || "-"}</p>
-                          <p className="col-span-2 text-slate-700">{row.food_needed || "Not specified"}</p>
-                          <p className="col-span-2 text-slate-700">{row.pickup_window || "Not set"}</p>
-                          <p className="col-span-1 capitalize text-slate-700">{row.urgency}</p>
+                          <div className="mt-2 flex items-center justify-between gap-2">
+                            <div className="text-xs text-slate-600">
+                              <p>Status: {mapShelterStatusForUi(row.status)}</p>
+                              <p>Notes: {row.notes ? `${row.notes.slice(0, 100)}${row.notes.length > 100 ? "..." : ""}` : "No notes"}</p>
+                            </div>
+                            <div className="flex gap-2">
+                              <button className="rounded border px-3 py-1 text-xs" onClick={() => router.push(`/restaurant/donation/${row.id}`)}>
+                                View Details
+                              </button>
+                              {respondAction.canRespond ? (
+                                <button className="rounded bg-emerald-800 px-3 py-1 text-xs text-white" onClick={() => router.push(`/restaurant/donation/${row.id}/confirm`)}>
+                                  {respondAction.label}
+                                </button>
+                              ) : (
+                                <button className="cursor-not-allowed rounded border px-3 py-1 text-xs text-slate-500" disabled>
+                                  {respondAction.label}
+                                </button>
+                              )}
+                            </div>
+                          </div>
                         </div>
-                        <div className="mt-2 flex items-center justify-between gap-2">
-                          <div className="text-xs text-slate-600">
-                            <p>Status: {mapShelterStatusForUi(row.status)}</p>
-                            <p>Notes: {row.notes ? `${row.notes.slice(0, 100)}${row.notes.length > 100 ? "..." : ""}` : "No notes"}</p>
+
+                        {/* Mobile: Rich request card (template design) */}
+                        <div className="md:hidden">
+                          <div className="flex gap-3">
+                            {/* Shelter avatar */}
+                            <div className="h-14 w-14 shrink-0 rounded-xl bg-emerald-100 flex items-center justify-center text-2xl">
+                              🏠
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="min-w-0">
+                                  <p className="font-semibold text-slate-900 truncate">{shelterNamesById[row.shelter_id] || "Shelter"}</p>
+                                  <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase ${
+                                    row.urgency === "high" ? "bg-red-100 text-red-800" :
+                                    row.urgency === "medium" ? "bg-amber-100 text-amber-800" :
+                                    "bg-green-100 text-green-800"
+                                  }`}>{row.urgency} urgency</span>
+                                </div>
+                                <span className="shrink-0 text-xs text-slate-500">{row.quantity || "-"} servings</span>
+                              </div>
+                              <p className="mt-1 text-xs text-slate-500">{row.city || "City"}, {row.state || "ST"} • {row.latitude == null && distanceTo(row) !== null ? "~" : ""}{formatDistance(distanceTo(row))} • Pickup: {row.pickup_window || "Not set"}</p>
+                              <p className="mt-0.5 text-xs text-slate-600">{row.food_needed || "Not specified"}</p>
+                            </div>
                           </div>
-                          <div className="flex gap-2">
-                            <button className="rounded border px-3 py-1 text-xs" onClick={() => router.push(`/restaurant/donation/${row.id}`)}>
-                              View Details
+                          {/* Action buttons row */}
+                          <div className="mt-2 flex gap-2 pl-[68px]">
+                            <button
+                              className="rounded-full border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700"
+                              onClick={() => router.push(`/restaurant/donation/${row.id}`)}
+                            >
+                              Details
                             </button>
                             {respondAction.canRespond ? (
-                              <button className="rounded bg-emerald-800 px-3 py-1 text-xs text-white" onClick={() => router.push(`/restaurant/donation/${row.id}/confirm`)}>
+                              <button className="rounded-full bg-emerald-800 px-3 py-1.5 text-xs font-medium text-white" onClick={() => router.push(`/restaurant/donation/${row.id}/confirm`)}>
                                 {respondAction.label}
                               </button>
                             ) : (
-                              <button className="cursor-not-allowed rounded border px-3 py-1 text-xs text-slate-500" disabled>
-                                {respondAction.label}
-                              </button>
+                              <span className="flex items-center text-xs text-slate-500">{respondAction.label}</span>
                             )}
                           </div>
                         </div>
                       </div>
-
-                      {/* Mobile: Rich request card (template design) */}
-                      <div className="md:hidden">
-                        <div className="flex gap-3">
-                          {/* Shelter avatar */}
-                          <div className="h-14 w-14 shrink-0 rounded-xl bg-emerald-100 flex items-center justify-center text-2xl">
-                            🏠
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-start justify-between gap-2">
-                              <div className="min-w-0">
-                                <p className="font-semibold text-slate-900 truncate">{shelterNamesById[row.shelter_id] || "Shelter"}</p>
-                                <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase ${
-                                  row.urgency === "high" ? "bg-red-100 text-red-800" :
-                                  row.urgency === "medium" ? "bg-amber-100 text-amber-800" :
-                                  "bg-green-100 text-green-800"
-                                }`}>{row.urgency} urgency</span>
-                              </div>
-                              <span className="shrink-0 text-xs text-slate-500">{row.quantity || "-"} servings</span>
-                            </div>
-                            <p className="mt-1 text-xs text-slate-500">{row.city || "City"}, {row.state || "ST"} • Pickup: {row.pickup_window || "Not set"}</p>
-                            <p className="mt-0.5 text-xs text-slate-600">{row.food_needed || "Not specified"}</p>
-                          </div>
-                        </div>
-                        {/* Action buttons row */}
-                        <div className="mt-2 flex gap-2 pl-[68px]">
-                          <button
-                            className="rounded-full border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700"
-                            onClick={() => router.push(`/restaurant/donation/${row.id}`)}
-                          >
-                            Details
-                          </button>
-                          {respondAction.canRespond ? (
-                            <button className="rounded-full bg-emerald-800 px-3 py-1.5 text-xs font-medium text-white" onClick={() => router.push(`/restaurant/donation/${row.id}/confirm`)}>
-                              {respondAction.label}
-                            </button>
-                          ) : (
-                            <span className="flex items-center text-xs text-slate-500">{respondAction.label}</span>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                    );
-                  })}
-                </>
-              )
+                      );
+                    })}
+                  </>
+                )}
+              </>
             ) : (
               requestTab === "matched" ? (
                 matchedRequests.length === 0 ? (
@@ -466,7 +554,10 @@ export default function RestaurantHome() {
                   matchedRequests.map((row) => (
                     <div key={row.id} className="border-t border-slate-200 px-4 py-3 text-sm first:border-t-0">
                       <div className="flex items-center justify-between">
-                        <p className="font-medium text-slate-900">{row.title}</p>
+                        <p className="font-medium text-slate-900">
+                          {row.title}
+                          {matchedIds.has(row.id) ? <span className="ml-2 rounded-full bg-rose-600 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-white">New</span> : null}
+                        </p>
                         <p className="text-slate-700">{mapShelterStatusForUi(row.status)}</p>
                       </div>
                       <p className="text-slate-600">Pickup window: {row.pickup_window || "Not set"}</p>
@@ -494,7 +585,7 @@ export default function RestaurantHome() {
               )
             )}
           </section>
-          ) : activeTab === "chats" ? (
+          ) : (
             <section className="rounded-xl border border-slate-200 bg-white p-0 md:rounded">
               <div className="px-4 py-3 border-b border-slate-200">
                 <p className="text-sm font-semibold text-slate-900">Matched Chats</p>
@@ -514,7 +605,10 @@ export default function RestaurantHome() {
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between gap-2">
-                        <p className="text-sm font-semibold text-slate-900 truncate">{item.partnerName}</p>
+                        <p className={`text-sm truncate text-slate-900 ${unreadChatIds.has(item.requestId) ? "font-bold" : "font-semibold"}`}>
+                          {unreadChatIds.has(item.requestId) ? <span className="mr-1.5 inline-block h-2 w-2 rounded-full bg-rose-600" /> : null}
+                          {item.partnerName}
+                        </p>
                         <p className="shrink-0 text-[10px] text-slate-400">{item.timestamp}</p>
                       </div>
                       <p className="text-xs text-slate-500 truncate">{item.requestTitle}</p>
@@ -524,7 +618,7 @@ export default function RestaurantHome() {
                 ))
               )}
             </section>
-          ) : null}
+          )}
         </div>
       </main>
     </div>

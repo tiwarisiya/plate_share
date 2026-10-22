@@ -4,13 +4,33 @@ import React, { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { getSupabaseClient } from "@/lib/supabaseClient";
 import { getCurrentUserRole, isRestaurantProfileComplete } from "@/lib/flow";
+import { EMPTY_FOOD_SAFETY, FoodSafetyValue, foodSafetyColumns, validateFoodSafety } from "@/lib/food-safety";
+import { geocode } from "@/lib/geo";
+import { FoodSafetyFields } from "@/components/offers/food-safety-fields";
+import { PickupMethodField } from "@/components/offers/pickup-method-field";
+import { PickupMethod } from "@/lib/delivery";
+import {
+  EMPTY_PICKUP_ADDRESS,
+  PickupAddressFields,
+  PickupAddressValue,
+  validatePickupAddress,
+} from "@/components/offers/pickup-address-fields";
 
 type RequestRow = {
   id: string;
   shelter_id: string;
   title: string;
   pickup_window: string | null;
-  status: "open" | "responded" | "matched" | "completed" | "fulfilled" | "cancelled";
+  status: "open" | "responded" | "matched" | "completed" | "cancelled";
+};
+
+type RestaurantDefaults = {
+  cuisine: string | null;
+  default_pickup_window: string | null;
+  address: string | null;
+  city: string | null;
+  state: string | null;
+  zip_code: string | null;
 };
 
 type ExistingResponseRow = {
@@ -30,6 +50,12 @@ export default function DonationConfirmPage() {
   const [request, setRequest] = useState<RequestRow | null>(null);
   const [pickupWindow, setPickupWindow] = useState("");
   const [responseNote, setResponseNote] = useState("");
+  const [foodType, setFoodType] = useState("");
+  const [quantity, setQuantity] = useState("");
+  const [defaults, setDefaults] = useState<RestaurantDefaults | null>(null);
+  const [pickupAddress, setPickupAddress] = useState<PickupAddressValue>(EMPTY_PICKUP_ADDRESS);
+  const [foodSafety, setFoodSafety] = useState<FoodSafetyValue>(EMPTY_FOOD_SAFETY);
+  const [pickupMethod, setPickupMethod] = useState<PickupMethod>("self");
   const [existingResponseStatus, setExistingResponseStatus] = useState<ExistingResponseRow["status"] | null>(null);
 
   const loadData = async () => {
@@ -58,7 +84,11 @@ export default function DonationConfirmPage() {
       return;
     }
 
-    const [{ data: requestRow, error: requestError }, { data: existingResponse, error: responseError }] = await Promise.all([
+    const [
+      { data: requestRow, error: requestError },
+      { data: existingResponse, error: responseError },
+      { data: profileRow },
+    ] = await Promise.all([
       supabase
         .from("shelter_requests")
         .select("id, shelter_id, title, pickup_window, status")
@@ -70,6 +100,11 @@ export default function DonationConfirmPage() {
         .eq("request_id", requestId)
         .eq("restaurant_id", user.id)
         .maybeSingle(),
+      supabase
+        .from("profiles")
+        .select("cuisine, default_pickup_window, address, city, state, zip_code")
+        .eq("id", user.id)
+        .single(),
     ]);
 
     if (requestError) {
@@ -94,8 +129,11 @@ export default function DonationConfirmPage() {
     setRequest(parsed);
 
     const response = (existingResponse as ExistingResponseRow | null) || null;
-    setPickupWindow(response?.proposed_pickup_window || parsed.pickup_window || "");
+    const restaurantDefaults = (profileRow as RestaurantDefaults | null) || null;
+    setDefaults(restaurantDefaults);
+    setPickupWindow(response?.proposed_pickup_window || parsed.pickup_window || restaurantDefaults?.default_pickup_window || "");
     setResponseNote(response?.response_note || "");
+    setFoodType(restaurantDefaults?.cuisine || "");
     setExistingResponseStatus(response?.status || null);
 
     setLoading(false);
@@ -114,7 +152,7 @@ export default function DonationConfirmPage() {
       return;
     }
 
-    if (request.status === "matched" || request.status === "completed" || request.status === "fulfilled" || request.status === "cancelled") {
+    if (request.status === "matched" || request.status === "completed" || request.status === "cancelled") {
       setStatusMsg("Cannot respond to this request because it is no longer open.");
       return;
     }
@@ -123,78 +161,50 @@ export default function DonationConfirmPage() {
     setStatusMsg(null);
 
     try {
+      const parsedQuantity = quantity ? Number.parseInt(quantity, 10) : null;
+      if (parsedQuantity !== null && (Number.isNaN(parsedQuantity) || parsedQuantity <= 0)) {
+        throw new Error("Servings must be a positive number.");
+      }
+
+      const addressError = validatePickupAddress(pickupAddress);
+      if (addressError) throw new Error(addressError);
+
+      const safetyError = validateFoodSafety(foodSafety);
+      if (safetyError) throw new Error(safetyError);
+      const safety = foodSafetyColumns(foodSafety);
+      const overrideLocation = pickupAddress.useCustom
+        ? await geocode({ address: pickupAddress.address, city: pickupAddress.city, state: pickupAddress.state, zip: pickupAddress.zip })
+        : null;
+
       const supabase = getSupabaseClient();
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
-      if (!user) {
-        throw new Error("Please sign in again.");
-      }
-
-      const { data: donation } = await supabase
-        .from("donations")
-        .select("id")
-        .eq("restaurant_id", user.id)
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      if (!donation) {
-        throw new Error("No donation profile found. Complete onboarding first.");
-      }
-
-      const { data: latestResponse } = await supabase
-        .from("request_responses")
-        .select("status")
-        .eq("request_id", request.id)
-        .eq("restaurant_id", user.id)
-        .maybeSingle();
-
-      const latestStatus = latestResponse?.status as ExistingResponseRow["status"] | undefined;
-      if (latestStatus === "pending" || latestStatus === "accepted") {
-        throw new Error("You already have an active response for this request.");
-      }
-
-      const { error: responseError } = await supabase
-        .from("request_responses")
-        .upsert(
-          {
-            request_id: request.id,
-            restaurant_id: user.id,
-            donation_id: donation.id,
-            proposed_pickup_window: pickupWindow || null,
-            response_note: responseNote || null,
-            status: "accepted",
-          },
-          { onConflict: "request_id,restaurant_id" }
-        );
+      const { error: responseError } = await supabase.rpc("submit_request_response", {
+        p_request_id: request.id,
+        p_proposed_pickup_window: pickupWindow || null,
+        p_response_note: responseNote || null,
+        p_food_type: foodType || null,
+        p_quantity: parsedQuantity,
+        p_pickup_address: pickupAddress.useCustom ? pickupAddress.address : null,
+        p_pickup_city: pickupAddress.useCustom ? pickupAddress.city : null,
+        p_pickup_state: pickupAddress.useCustom ? pickupAddress.state : null,
+        p_pickup_zip: pickupAddress.useCustom ? pickupAddress.zip : null,
+        p_prepared_at: safety.prepared_at,
+        p_use_by: safety.use_by,
+        p_storage_type: safety.storage_type,
+        p_allergens: safety.allergens,
+        p_allergen_notes: safety.allergen_notes,
+        p_estimated_weight_lbs: safety.estimated_weight_lbs,
+        p_safety_checklist_confirmed: true,
+        p_pickup_latitude: overrideLocation?.latitude ?? null,
+        p_pickup_longitude: overrideLocation?.longitude ?? null,
+        p_pickup_method: pickupMethod,
+      });
 
       if (responseError) {
         throw new Error(responseError.message);
       }
 
-      const { error: requestMatchError } = await supabase
-        .from("shelter_requests")
-        .update({
-          status: "matched",
-          matched_donation_id: donation.id,
-          pickup_window: pickupWindow || request.pickup_window,
-        })
-        .eq("id", request.id)
-        .in("status", ["open", "responded"]);
-
-      if (requestMatchError) {
-        throw new Error(`Failed to match request: ${requestMatchError.message}`);
-      }
-
-      await supabase
-        .from("donations")
-        .update({ status: "matched", matched_shelter_id: request.shelter_id })
-        .eq("id", donation.id);
-
-      setStatusMsg("Matched! Redirecting to coordination chat...");
-      router.push(`/restaurant/home`);
+      setStatusMsg("Response sent. The shelter will review it and confirm the match.");
+      router.push(`/restaurant/donation/${request.id}`);
     } catch (err: unknown) {
       setStatusMsg(err instanceof Error ? err.message : "Failed to submit response.");
     } finally {
@@ -227,7 +237,7 @@ export default function DonationConfirmPage() {
 
             {/* Form */}
             <div className="px-4 py-4 md:px-6 md:py-5 space-y-4">
-              <p className="text-sm text-slate-600">Submit your coordination details to instantly match with this shelter request.</p>
+              <p className="text-sm text-slate-600">Submit your coordination details. The shelter reviews responses and confirms the match.</p>
 
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">Proposed pickup window</label>
@@ -238,6 +248,33 @@ export default function DonationConfirmPage() {
                   placeholder="Today 16:00 - 18:00"
                 />
               </div>
+
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-slate-700">Food you are offering</label>
+                  <input
+                    className="h-12 w-full rounded-xl border border-slate-300 px-4 text-sm md:h-10 md:rounded-md md:px-3"
+                    value={foodType}
+                    onChange={(e) => setFoodType(e.target.value)}
+                    placeholder="Prepared meals, bread, produce"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-slate-700">Servings (optional)</label>
+                  <input
+                    className="h-12 w-full rounded-xl border border-slate-300 px-4 text-sm md:h-10 md:rounded-md md:px-3"
+                    inputMode="numeric"
+                    value={quantity}
+                    onChange={(e) => setQuantity(e.target.value)}
+                    placeholder="40"
+                  />
+                </div>
+              </div>
+
+              <PickupAddressFields value={pickupAddress} onChange={setPickupAddress} defaults={defaults} />
+              <PickupMethodField value={pickupMethod} onChange={setPickupMethod} />
+
+              <FoodSafetyFields value={foodSafety} onChange={setFoodSafety} />
 
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">Response note (optional)</label>

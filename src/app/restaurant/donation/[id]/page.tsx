@@ -9,6 +9,9 @@ import {
   mapShelterStatusForUi,
   ShelterRequestStatus,
 } from "@/lib/flow";
+import { OFFER_SELECT, OfferRow, OfferSummary } from "@/components/offers/offer-summary";
+import { HANDSHAKE_SELECT, PickupHandshake } from "@/components/offers/pickup-handshake";
+import { REQUEST_KINDS, markNotificationsRead } from "@/lib/notifications";
 
 type RequestRow = {
   id: string;
@@ -29,6 +32,8 @@ type RequestRow = {
   zip_code: string | null;
   status: ShelterRequestStatus;
   matched_donation_id: string | null;
+  restaurant_pickup_confirmed_at: string | null;
+  shelter_pickup_confirmed_at: string | null;
 };
 
 type ProfileRow = {
@@ -40,6 +45,7 @@ type ResponseRow = {
   id: string;
   status: "pending" | "accepted" | "rejected" | "cancelled";
   proposed_pickup_window: string | null;
+  offer: OfferRow | null;
 };
 
 export default function DonationRequestDetailsPage() {
@@ -56,9 +62,9 @@ export default function DonationRequestDetailsPage() {
   const [isMatchedToMe, setIsMatchedToMe] = useState(false);
   const [coordinationPickup, setCoordinationPickup] = useState("");
 
-  const loadRequest = async () => {
+  const loadRequest = async (message: string | null = null) => {
     setLoading(true);
-    setStatusMsg(null);
+    setStatusMsg(message);
 
     const supabase = getSupabaseClient();
     const {
@@ -84,39 +90,18 @@ export default function DonationRequestDetailsPage() {
 
     setUserId(user.id);
 
-    let requestRow: any = null;
-    const requestWithSnapshot = await supabase
+    const { data: requestRow, error: requestError } = await supabase
       .from("shelter_requests")
       .select(
-        "id, shelter_id, title, quantity, food_needed, food_restrictions, pickup_window, urgency, notes, coordination_notes, shelter_contact_email, shelter_contact_phone, address, city, state, zip_code, status, matched_donation_id"
+        `id, shelter_id, title, quantity, food_needed, food_restrictions, pickup_window, urgency, notes, coordination_notes, shelter_contact_email, shelter_contact_phone, address, city, state, zip_code, status, matched_donation_id, ${HANDSHAKE_SELECT}`
       )
       .eq("id", requestId)
       .maybeSingle();
 
-    if (requestWithSnapshot.error && requestWithSnapshot.error.code === "42703") {
-      const legacyRequest = await supabase
-        .from("shelter_requests")
-        .select(
-          "id, shelter_id, title, quantity, food_needed, food_restrictions, pickup_window, urgency, notes, coordination_notes, address, city, state, zip_code, status, matched_donation_id"
-        )
-        .eq("id", requestId)
-        .maybeSingle();
-
-      if (legacyRequest.error) {
-        setStatusMsg(`Failed to load request: ${legacyRequest.error.message}`);
-        setLoading(false);
-        return;
-      }
-
-      requestRow = legacyRequest.data
-        ? { ...legacyRequest.data, shelter_contact_email: null, shelter_contact_phone: null }
-        : null;
-    } else if (requestWithSnapshot.error) {
-      setStatusMsg(`Failed to load request: ${requestWithSnapshot.error.message}`);
+    if (requestError) {
+      setStatusMsg(`Failed to load request: ${requestError.message}`);
       setLoading(false);
       return;
-    } else {
-      requestRow = requestWithSnapshot.data;
     }
 
     if (!requestRow) {
@@ -127,6 +112,7 @@ export default function DonationRequestDetailsPage() {
 
     const parsed = requestRow as RequestRow;
     setRequest(parsed);
+    void markNotificationsRead(parsed.id, REQUEST_KINDS);
     setCoordinationPickup(parsed.pickup_window || "");
 
     const { data: shelter } = await supabase
@@ -139,7 +125,7 @@ export default function DonationRequestDetailsPage() {
 
     const { data: responseRow } = await supabase
       .from("request_responses")
-      .select("id, status, proposed_pickup_window")
+      .select(`id, status, proposed_pickup_window, offer:donations(${OFFER_SELECT})`)
       .eq("request_id", requestId)
       .eq("restaurant_id", user.id)
       .maybeSingle();
@@ -172,7 +158,7 @@ export default function DonationRequestDetailsPage() {
 
   const canRespond = useMemo(() => {
     if (!request) return false;
-    if (request.status === "matched" || request.status === "completed" || request.status === "fulfilled" || request.status === "cancelled") return false;
+    if (request.status === "matched" || request.status === "completed" || request.status === "cancelled") return false;
     if (!myResponse) return true;
     return myResponse.status === "rejected" || myResponse.status === "cancelled";
   }, [request, myResponse]);
@@ -181,7 +167,7 @@ export default function DonationRequestDetailsPage() {
     if (!request) return "Response unavailable";
     if (myResponse?.status === "accepted") return "Response accepted by shelter";
     if (myResponse?.status === "pending") return "Awaiting shelter decision";
-    if (request.status === "completed" || request.status === "fulfilled") return "Request already completed";
+    if (request.status === "completed") return "Request already completed";
     if (request.status === "cancelled") return "Request cancelled by shelter";
     if (request.status === "matched") return "Request already matched";
     return "Response unavailable for this status";
@@ -193,19 +179,17 @@ export default function DonationRequestDetailsPage() {
     if (!request || !canUpdateMatchedPickup) return;
 
     const supabase = getSupabaseClient();
-    const { error } = await supabase
-      .from("shelter_requests")
-      .update({ pickup_window: coordinationPickup })
-      .eq("id", request.id)
-      .eq("status", "matched");
+    const { error } = await supabase.rpc("update_matched_pickup_window", {
+      p_request_id: request.id,
+      p_pickup_window: coordinationPickup,
+    });
 
     if (error) {
       setStatusMsg(`Failed to update pickup window: ${error.message}`);
       return;
     }
 
-    setStatusMsg("Pickup window updated for coordination.");
-    await loadRequest();
+    await loadRequest("Pickup window updated for coordination.");
   };
 
   const urgencyColor = (u: string) => {
@@ -351,6 +335,7 @@ export default function DonationRequestDetailsPage() {
                       <span className="text-slate-500">Proposed pickup</span>
                       <span className="font-medium text-slate-900">{myResponse.proposed_pickup_window || "Not provided"}</span>
                     </div>
+                    <OfferSummary offer={myResponse.offer} />
                   </div>
                 </div>
               ) : null}
@@ -375,6 +360,16 @@ export default function DonationRequestDetailsPage() {
                   </button>
                 )}
               </div>
+
+              {isMatchedToMe && (request.status === "matched" || request.status === "completed") ? (
+                <PickupHandshake
+                  requestId={request.id}
+                  role="restaurant"
+                  restaurantConfirmedAt={request.restaurant_pickup_confirmed_at}
+                  shelterConfirmedAt={request.shelter_pickup_confirmed_at}
+                  onChange={(message) => loadRequest(message)}
+                />
+              ) : null}
 
               {/* Coordination pickup update */}
               {canUpdateMatchedPickup ? (
