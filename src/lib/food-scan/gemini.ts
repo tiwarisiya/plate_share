@@ -3,7 +3,7 @@ import { FoodScanProvider, FoodScanUnavailableError, sanitizeSuggestions } from 
 
 // Google Gemini (free tier works). Server-only: reads GEMINI_API_KEY.
 const API_BASE = "https://generativelanguage.googleapis.com/v1beta/models";
-const TIMEOUT_MS = 20000;
+const TIMEOUT_MS = 25000;
 
 // Tried in order; a model that's retired or not offered to this key (404)
 // is skipped. GEMINI_MODEL (comma-separated) overrides the list.
@@ -58,12 +58,20 @@ export function geminiProvider(): FoodScanProvider | null {
       });
 
       for (const model of models) {
-        const res = await fetch(`${API_BASE}/${model}:generateContent`, {
-          method: "POST",
-          signal: AbortSignal.timeout(TIMEOUT_MS),
-          headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
-          body: request,
-        });
+        let res: Response;
+        try {
+          res = await fetch(`${API_BASE}/${model}:generateContent`, {
+            method: "POST",
+            signal: AbortSignal.timeout(TIMEOUT_MS),
+            headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
+            body: request,
+          });
+        } catch (err) {
+          if (err instanceof DOMException && err.name === "TimeoutError") {
+            throw new FoodScanUnavailableError(`Gemini ${model} took longer than ${TIMEOUT_MS / 1000}s`);
+          }
+          throw err;
+        }
 
         if (res.status === 404) continue;
         if (res.status === 429 || res.status === 403 || res.status >= 500) {

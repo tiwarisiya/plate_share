@@ -66,11 +66,12 @@ export async function POST(request: NextRequest) {
       .select("id")
       .single();
 
-    const body: FoodScanResponse = { scanId: scan?.id ?? null, suggestions };
+    const body: FoodScanResponse = { scanId: scan?.id ?? null, model: provider.model, suggestions };
     return NextResponse.json(body);
   } catch (err) {
     if (err instanceof FoodScanUnavailableError) {
-      return unavailable("Photo scanning is busy or over its free quota. Fill in the form manually.");
+      console.error("[scan-food]", err.message);
+      return unavailable("Photo scanning is busy, slow or over its free quota right now. Fill in the form manually.");
     }
     console.error("[scan-food]", err instanceof Error ? err.message : err);
     return unavailable("Couldn't scan this photo. Fill in the form manually.", 502);

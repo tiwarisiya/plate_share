@@ -16,6 +16,7 @@ export type FoodScanSuggestions = {
 
 export type FoodScanResponse = {
   scanId: string | null;
+  model: string;
   suggestions: FoodScanSuggestions;
 };
 
