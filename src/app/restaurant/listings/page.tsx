@@ -242,20 +242,20 @@ export default function RestaurantListingsPage() {
                 <input className={inputClass} value={pickupWindow} onChange={(e) => setPickupWindow(e.target.value)} placeholder="Today 4-7pm, back door" />
               </div>
               <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">Photo (optional)</label>
-                <input type="file" accept="image/*" className="text-sm" onChange={(e) => setPhoto(e.target.files?.[0] || null)} />
+                <p className="mb-1 block text-sm font-medium text-slate-700">Photo (optional)</p>
+                <PhotoScan
+                  photo={photo}
+                  onPhotoChange={setPhoto}
+                  onApply={(s, id) => {
+                    if (s.food_name) setFoodType(s.food_name);
+                    if (s.description) setDescription(s.description);
+                    if (s.estimated_servings) setQuantity(String(s.estimated_servings));
+                    setFoodSafety((prev) => applyScanToFoodSafety(prev, s));
+                    setScanId(id);
+                    setScanApplied(true);
+                  }}
+                />
               </div>
-              <PhotoScan
-                photo={photo}
-                onApply={(s, id) => {
-                  if (s.food_name) setFoodType(s.food_name);
-                  if (s.description) setDescription(s.description);
-                  if (s.estimated_servings) setQuantity(String(s.estimated_servings));
-                  setFoodSafety((prev) => applyScanToFoodSafety(prev, s));
-                  setScanId(id);
-                  setScanApplied(true);
-                }}
-              />
               {scanApplied ? <p className="text-xs text-sky-800">Fields were pre-filled from the photo. Check each one, especially allergens, before posting.</p> : null}
               <PickupAddressFields value={pickupAddress} onChange={setPickupAddress} defaults={defaults} />
               <PickupMethodField value={pickupMethod} onChange={setPickupMethod} />

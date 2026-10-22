@@ -5,6 +5,7 @@ import { getSupabaseClient } from "@/lib/supabaseClient";
 import { FoodSafetyValue, allergenLabels, storageLabel } from "@/lib/food-safety";
 import { FoodScanResponse, FoodScanSuggestions } from "@/lib/food-scan/types";
 import { Button } from "@/components/ui/button";
+import { PhotoPicker } from "@/components/ui/photo-picker";
 
 const MAX_DIMENSION = 1024;
 
@@ -24,16 +25,18 @@ async function resizeImage(file: File): Promise<Blob> {
 }
 
 type PhotoScanProps = {
-  // The photo to scan (e.g. the listing photo). When omitted the component
-  // shows its own picker.
+  // Controlled photo (e.g. the listing photo, which is also uploaded). When
+  // omitted the component keeps the photo itself (response form).
   photo?: File | null;
+  onPhotoChange?: (file: File | null) => void;
   onApply: (suggestions: FoodScanSuggestions, scanId: string | null) => void;
 };
 
-// "Scan photo to pre-fill": sends a resized photo to /api/scan-food and
-// shows the suggestions for the restaurant to apply. If scanning isn't
-// available it says so and the form carries on as normal.
-export function PhotoScan({ photo, onApply }: PhotoScanProps) {
+// Photo picker plus "Scan photo to pre-fill": sends a resized photo to
+// /api/scan-food and shows the suggestions for the restaurant to apply. If
+// scanning isn't set up, only the picker shows; if a scan fails it says so
+// and the form carries on as normal.
+export function PhotoScan({ photo, onPhotoChange, onApply }: PhotoScanProps) {
   const [configured, setConfigured] = useState(false);
   const [ownPhoto, setOwnPhoto] = useState<File | null>(null);
   const [scanning, setScanning] = useState(false);
@@ -47,9 +50,13 @@ export function PhotoScan({ photo, onApply }: PhotoScanProps) {
       .catch(() => setConfigured(false));
   }, []);
 
-  if (!configured) return null;
-
   const file = photo === undefined ? ownPhoto : photo;
+  const setFile = (next: File | null) => {
+    if (photo === undefined) setOwnPhoto(next);
+    onPhotoChange?.(next);
+    setResult(null);
+    setError(null);
+  };
 
   const scan = async () => {
     if (!file) return;
@@ -80,25 +87,26 @@ export function PhotoScan({ photo, onApply }: PhotoScanProps) {
 
   const s = result?.suggestions;
 
-  return (
-    <div className="rounded-xl border border-sky-200 bg-sky-50/60 p-3 text-sm">
-      <div className="flex flex-wrap items-center gap-2">
-        {photo === undefined ? (
-          <input type="file" accept="image/*" capture="environment" className="text-xs" onChange={(e) => setOwnPhoto(e.target.files?.[0] || null)} />
-        ) : null}
-        <Button type="button" size="sm" variant="secondary" disabled={!file || scanning} onClick={() => void scan()}>
-          {scanning ? "Scanning..." : "📷 Scan photo to pre-fill"}
-        </Button>
-        {!file ? <span className="text-xs text-slate-500">{photo === undefined ? "Choose a photo of the food." : "Add a photo above to scan it."}</span> : null}
-      </div>
+  // Without scanning, the response form has no use for a photo; the
+  // listing form still needs its photo picker.
+  if (!configured) return photo === undefined ? null : <PhotoPicker file={file} onChange={setFile} />;
 
-      {error ? <p className="mt-2 text-xs text-slate-600">{error}</p> : null}
+  return (
+    <div className="space-y-2 text-sm">
+      <PhotoPicker file={file} onChange={setFile}>
+        <Button type="button" size="sm" variant="secondary" disabled={scanning} onClick={() => void scan()}>
+          {scanning ? "Scanning..." : "✨ Scan photo to pre-fill"}
+        </Button>
+      </PhotoPicker>
+      {!file ? <p className="text-xs text-slate-500">Add a photo, then scan it to fill in the form for you.</p> : null}
+
+      {error ? <p className="text-xs text-slate-600">{error}</p> : null}
 
       {s ? (
         !s.is_food ? (
-          <p className="mt-2 text-xs text-slate-600">This photo doesn&apos;t look like food. Try another photo, or fill in the form manually.</p>
+          <p className="text-xs text-slate-600">This photo doesn&apos;t look like food. Try another photo, or fill in the form manually.</p>
         ) : (
-          <div className="mt-2 space-y-1 text-xs text-slate-700">
+          <div className="space-y-1 rounded-xl border border-sky-200 bg-sky-50/60 p-3 text-xs text-slate-700">
             <p className="font-medium text-slate-900">Suggestions from the photo ({s.confidence} confidence)</p>
             {s.food_name ? <p>Food: {s.food_name}{s.description ? ` (${s.description})` : ""}</p> : null}
             {s.estimated_servings || s.estimated_weight_lbs ? (
