@@ -9,6 +9,7 @@ import { RoleShell, useRoleGuard } from "@/components/ui/role-shell";
 import { Button } from "@/components/ui/button";
 import { FoodSafetyFields } from "@/components/offers/food-safety-fields";
 import { PickupMethodField } from "@/components/offers/pickup-method-field";
+import { PhotoScan, applyScanToFoodSafety, linkFoodScan } from "@/components/offers/photo-scan";
 import { PickupMethod } from "@/lib/delivery";
 import { OfferSummary } from "@/components/offers/offer-summary";
 import {
@@ -53,6 +54,8 @@ export default function RestaurantListingsPage() {
   const [pickupAddress, setPickupAddress] = useState<PickupAddressValue>(EMPTY_PICKUP_ADDRESS);
   const [foodSafety, setFoodSafety] = useState<FoodSafetyValue>(EMPTY_FOOD_SAFETY);
   const [pickupMethod, setPickupMethod] = useState<PickupMethod>("self");
+  const [scanId, setScanId] = useState<string | null>(null);
+  const [scanApplied, setScanApplied] = useState(false);
 
   const [reloadKey, setReloadKey] = useState(0);
   const reload = () => setReloadKey((key) => key + 1);
@@ -115,6 +118,8 @@ export default function RestaurantListingsPage() {
     setPhoto(null);
     setPickupAddress(EMPTY_PICKUP_ADDRESS);
     setFoodSafety(EMPTY_FOOD_SAFETY);
+    setScanId(null);
+    setScanApplied(false);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -156,7 +161,7 @@ export default function RestaurantListingsPage() {
       { address: pickupAddress.address, city: pickupAddress.city, state: pickupAddress.state, zip: pickupAddress.zip },
       defaults
     );
-    const { error: insertError } = await supabase.from("donations").insert({
+    const { data: inserted, error: insertError } = await supabase.from("donations").insert({
       restaurant_id: userId,
       restaurant_name: defaults.name,
       kind: "listing",
@@ -175,7 +180,7 @@ export default function RestaurantListingsPage() {
       ...coordinates,
       ...foodSafetyColumns(foodSafety),
       safety_checklist_confirmed_at: new Date().toISOString(),
-    });
+    }).select("id").single();
     setSubmitting(false);
 
     if (insertError) {
@@ -183,6 +188,7 @@ export default function RestaurantListingsPage() {
       return;
     }
 
+    await linkFoodScan(scanId, inserted?.id ?? null);
     resetForm();
     reload();
     setMsg("Listing posted. Nearby shelters can now claim it.");
@@ -239,6 +245,18 @@ export default function RestaurantListingsPage() {
                 <label className="mb-1 block text-sm font-medium text-slate-700">Photo (optional)</label>
                 <input type="file" accept="image/*" className="text-sm" onChange={(e) => setPhoto(e.target.files?.[0] || null)} />
               </div>
+              <PhotoScan
+                photo={photo}
+                onApply={(s, id) => {
+                  if (s.food_name) setFoodType(s.food_name);
+                  if (s.description) setDescription(s.description);
+                  if (s.estimated_servings) setQuantity(String(s.estimated_servings));
+                  setFoodSafety((prev) => applyScanToFoodSafety(prev, s));
+                  setScanId(id);
+                  setScanApplied(true);
+                }}
+              />
+              {scanApplied ? <p className="text-xs text-sky-800">Fields were pre-filled from the photo. Check each one, especially allergens, before posting.</p> : null}
               <PickupAddressFields value={pickupAddress} onChange={setPickupAddress} defaults={defaults} />
               <PickupMethodField value={pickupMethod} onChange={setPickupMethod} />
               <FoodSafetyFields value={foodSafety} onChange={setFoodSafety} />
