@@ -1,0 +1,1 @@
+- [Next.js preview origins](nextjs-preview-origins.md) — Replit's nested preview host may need its own allowedDevOrigins wildcard for HMR.
