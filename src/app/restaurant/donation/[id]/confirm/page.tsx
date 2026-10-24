@@ -8,6 +8,7 @@ import { EMPTY_FOOD_SAFETY, FoodSafetyValue, foodSafetyColumns, validateFoodSafe
 import { geocode } from "@/lib/geo";
 import { FoodSafetyFields } from "@/components/offers/food-safety-fields";
 import { PickupMethodField } from "@/components/offers/pickup-method-field";
+import { PhotoScan, applyScanToFoodSafety, linkFoodScan } from "@/components/offers/photo-scan";
 import { PickupMethod } from "@/lib/delivery";
 import {
   EMPTY_PICKUP_ADDRESS,
@@ -56,6 +57,8 @@ export default function DonationConfirmPage() {
   const [pickupAddress, setPickupAddress] = useState<PickupAddressValue>(EMPTY_PICKUP_ADDRESS);
   const [foodSafety, setFoodSafety] = useState<FoodSafetyValue>(EMPTY_FOOD_SAFETY);
   const [pickupMethod, setPickupMethod] = useState<PickupMethod>("self");
+  const [scanId, setScanId] = useState<string | null>(null);
+  const [scanApplied, setScanApplied] = useState(false);
   const [existingResponseStatus, setExistingResponseStatus] = useState<ExistingResponseRow["status"] | null>(null);
 
   const loadData = async () => {
@@ -177,7 +180,7 @@ export default function DonationConfirmPage() {
         : null;
 
       const supabase = getSupabaseClient();
-      const { error: responseError } = await supabase.rpc("submit_request_response", {
+      const { data: responseId, error: responseError } = await supabase.rpc("submit_request_response", {
         p_request_id: request.id,
         p_proposed_pickup_window: pickupWindow || null,
         p_response_note: responseNote || null,
@@ -201,6 +204,11 @@ export default function DonationConfirmPage() {
 
       if (responseError) {
         throw new Error(responseError.message);
+      }
+
+      if (scanId && responseId) {
+        const { data: submitted } = await supabase.from("request_responses").select("donation_id").eq("id", responseId).single();
+        await linkFoodScan(scanId, submitted?.donation_id ?? null);
       }
 
       setStatusMsg("Response sent. The shelter will review it and confirm the match.");
@@ -248,6 +256,17 @@ export default function DonationConfirmPage() {
                   placeholder="Today 16:00 - 18:00"
                 />
               </div>
+
+              <PhotoScan
+                onApply={(s, id) => {
+                  if (s.food_name) setFoodType(s.description ? `${s.food_name} (${s.description})` : s.food_name);
+                  if (s.estimated_servings) setQuantity(String(s.estimated_servings));
+                  setFoodSafety((prev) => applyScanToFoodSafety(prev, s));
+                  setScanId(id);
+                  setScanApplied(true);
+                }}
+              />
+              {scanApplied ? <p className="text-xs text-sky-800">Fields were pre-filled from the photo. Check each one, especially allergens, before submitting.</p> : null}
 
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div>
