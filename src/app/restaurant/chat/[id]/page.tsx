@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { getSupabaseClient } from "@/lib/supabaseClient";
 import { getRoleGuardRedirect, getLoginPathForRole } from "@/lib/flow";
@@ -27,8 +27,6 @@ export default function RestaurantChatPage() {
   const [canChat, setCanChat] = useState(false);
   const [partnerName, setPartnerName] = useState("Shelter");
   const [requestTitle, setRequestTitle] = useState("Matched Request");
-
-  const title = useMemo(() => `${partnerName} Chat`, [partnerName]);
 
   const loadMessages = async () => {
     const supabase = getSupabaseClient();
@@ -165,7 +163,7 @@ export default function RestaurantChatPage() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 p-0 md:p-6">
+    <div className="min-h-screen overflow-x-hidden bg-slate-50 p-0 md:p-6">
       <main className="mx-auto max-w-5xl rounded-none border-0 bg-white md:rounded md:border md:border-slate-200 md:shadow-sm">
         {/* Chat header */}
         <div className="flex items-center gap-3 border-b border-slate-200 px-4 py-3">
@@ -176,8 +174,8 @@ export default function RestaurantChatPage() {
             🏠
           </div>
           <div className="flex-1 min-w-0">
-            <h1 className="text-base font-semibold text-slate-900 truncate md:text-2xl">{title}</h1>
-            <p className="text-xs text-slate-500 md:text-sm">{requestTitle}</p>
+            <h1 className="text-base font-semibold text-slate-900 truncate md:text-2xl">{partnerName}</h1>
+            <p className="text-xs text-slate-500 truncate md:text-sm">Re: {requestTitle}</p>
           </div>
           <Button variant="secondary" className="hidden md:inline-flex" onClick={() => router.push("/restaurant/home")}>
             Back
@@ -206,7 +204,7 @@ export default function RestaurantChatPage() {
                             : "rounded-bl-sm border border-slate-200 bg-white text-slate-900"
                         }`}
                       >
-                        <p>{msg.message}</p>
+                        <p className="whitespace-pre-wrap [overflow-wrap:anywhere]">{msg.message}</p>
                         <p className={`mt-1 text-[10px] ${msg.sender_role === "restaurant" ? "text-emerald-200" : "text-slate-400"}`}>
                           {new Date(msg.created_at).toLocaleString()}
                         </p>
@@ -226,7 +224,7 @@ export default function RestaurantChatPage() {
                 onChange={(e) => setDraft(e.target.value)}
                 placeholder="Type a message"
                 disabled={!canChat}
-                className="h-11 flex-1 rounded-full border border-slate-300 px-4 text-sm focus:border-emerald-700 focus:outline-none md:rounded-md"
+                className="h-11 min-w-0 flex-1 rounded-full border border-slate-300 px-4 text-sm focus:border-emerald-700 focus:outline-none md:rounded-md"
               />
               <button
                 type="submit"
