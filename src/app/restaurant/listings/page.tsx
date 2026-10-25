@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import { getSupabaseClient } from "@/lib/supabaseClient";
-import { EMPTY_FOOD_SAFETY, FoodSafetyValue, foodSafetyColumns, validateFoodSafety } from "@/lib/food-safety";
+import { EMPTY_FOOD_SAFETY, FoodSafetyValue, foodSafetyColumns, validateFoodSafety, withDefaultPreparedAt } from "@/lib/food-safety";
 import { coordinatesFor } from "@/lib/geo";
 import { LISTING_PHOTO_BUCKET, LISTING_SELECT, ListingRow, isListingExpired, listingPhotoUrl } from "@/lib/listings";
 import { RoleShell, useRoleGuard } from "@/components/ui/role-shell";
@@ -90,6 +90,7 @@ export default function RestaurantListingsPage() {
       setDefaults(profile);
       setFoodType((prev) => prev || profile?.cuisine || "");
       setPickupWindow((prev) => prev || profile?.default_pickup_window || "");
+      setFoodSafety(withDefaultPreparedAt);
 
       const parsed = (rows || []) as ListingRow[];
       setListings(parsed);
@@ -147,7 +148,7 @@ export default function RestaurantListingsPage() {
     setPickupBy("");
     setPhoto(null);
     setPickupAddress(EMPTY_PICKUP_ADDRESS);
-    setFoodSafety(EMPTY_FOOD_SAFETY);
+    setFoodSafety(withDefaultPreparedAt(EMPTY_FOOD_SAFETY));
     setScanId(null);
     setScanApplied(false);
   };
@@ -289,7 +290,7 @@ export default function RestaurantListingsPage() {
               {scanApplied ? <p className="text-xs text-sky-800">Fields were pre-filled from the photo. Check each one, especially allergens, before posting.</p> : null}
               <PickupAddressFields value={pickupAddress} onChange={setPickupAddress} defaults={defaults} />
               <PickupMethodField value={pickupMethod} onChange={setPickupMethod} />
-              <FoodSafetyFields value={foodSafety} onChange={setFoodSafety} />
+              <FoodSafetyFields value={foodSafety} onChange={setFoodSafety} singleConfirmation />
               <Button type="submit" className="w-full" disabled={submitting || !defaults}>{submitting ? "Posting..." : "Post listing"}</Button>
             </form>
           </section>

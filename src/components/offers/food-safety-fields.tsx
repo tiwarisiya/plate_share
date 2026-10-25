@@ -7,6 +7,7 @@ import {
   FoodSafetyValue,
   GOOD_SAMARITAN_NOTE,
   SAFETY_CHECKLIST,
+  SAFETY_CONFIRMATION,
   STORAGE_TYPES,
   StorageType,
 } from "@/lib/food-safety";
@@ -16,11 +17,13 @@ const inputClass = "h-12 w-full rounded-xl border border-slate-300 px-4 text-sm 
 type FoodSafetyFieldsProps = {
   value: FoodSafetyValue;
   onChange: (next: FoodSafetyValue) => void;
+  // One checkbox covering the whole checklist instead of one per item.
+  singleConfirmation?: boolean;
 };
 
 // Prepared-at / use-by, storage, allergens, weight, and the pre-submit
 // checklist for an offer.
-export function FoodSafetyFields({ value, onChange }: FoodSafetyFieldsProps) {
+export function FoodSafetyFields({ value, onChange, singleConfirmation = false }: FoodSafetyFieldsProps) {
   const update = (patch: Partial<FoodSafetyValue>) => onChange({ ...value, ...patch });
 
   const toggleAllergen = (allergen: Allergen) =>
@@ -78,17 +81,29 @@ export function FoodSafetyFields({ value, onChange }: FoodSafetyFieldsProps) {
 
       <fieldset className="space-y-2 rounded-lg bg-slate-50 p-3">
         <legend className="px-1 text-sm font-medium text-slate-700">Before you submit</legend>
-        {SAFETY_CHECKLIST.map((item, index) => (
-          <label key={item} className="flex items-start gap-2 text-sm text-slate-700">
+        {singleConfirmation ? (
+          <label className="flex items-start gap-2 text-sm text-slate-700">
             <input
               type="checkbox"
               className="mt-0.5"
-              checked={value.checklist[index]}
-              onChange={(e) => update({ checklist: value.checklist.map((checked, i) => (i === index ? e.target.checked : checked)) })}
+              checked={value.checklist.every(Boolean)}
+              onChange={(e) => update({ checklist: value.checklist.map(() => e.target.checked) })}
             />
-            {item}
+            {SAFETY_CONFIRMATION}
           </label>
-        ))}
+        ) : (
+          SAFETY_CHECKLIST.map((item, index) => (
+            <label key={item} className="flex items-start gap-2 text-sm text-slate-700">
+              <input
+                type="checkbox"
+                className="mt-0.5"
+                checked={value.checklist[index]}
+                onChange={(e) => update({ checklist: value.checklist.map((checked, i) => (i === index ? e.target.checked : checked)) })}
+              />
+              {item}
+            </label>
+          ))
+        )}
         <p className="pt-1 text-xs text-slate-500">{GOOD_SAMARITAN_NOTE}</p>
       </fieldset>
     </div>
