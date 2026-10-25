@@ -294,7 +294,7 @@ export default function DonationConfirmPage() {
               <PickupAddressFields value={pickupAddress} onChange={setPickupAddress} defaults={defaults} />
               <PickupMethodField value={pickupMethod} onChange={setPickupMethod} />
 
-              <FoodSafetyFields value={foodSafety} onChange={setFoodSafety} />
+              <FoodSafetyFields value={foodSafety} onChange={setFoodSafety} singleConfirmation />
 
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">Response note (optional)</label>
