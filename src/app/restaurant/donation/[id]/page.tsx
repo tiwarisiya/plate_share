@@ -34,6 +34,7 @@ type RequestRow = {
   matched_donation_id: string | null;
   restaurant_pickup_confirmed_at: string | null;
   shelter_pickup_confirmed_at: string | null;
+  origin: "request" | "listing";
 };
 
 type ProfileRow = {
@@ -93,7 +94,7 @@ export default function DonationRequestDetailsPage() {
     const { data: requestRow, error: requestError } = await supabase
       .from("shelter_requests")
       .select(
-        `id, shelter_id, title, quantity, food_needed, food_restrictions, pickup_window, urgency, notes, coordination_notes, shelter_contact_email, shelter_contact_phone, address, city, state, zip_code, status, matched_donation_id, ${HANDSHAKE_SELECT}`
+        `id, shelter_id, title, quantity, food_needed, food_restrictions, pickup_window, urgency, notes, coordination_notes, shelter_contact_email, shelter_contact_phone, address, city, state, zip_code, status, matched_donation_id, origin, ${HANDSHAKE_SELECT}`
       )
       .eq("id", requestId)
       .maybeSingle();
@@ -165,7 +166,7 @@ export default function DonationRequestDetailsPage() {
 
   const responseActionLabel = useMemo(() => {
     if (!request) return "Response unavailable";
-    if (myResponse?.status === "accepted") return "Response accepted by shelter";
+    if (myResponse?.status === "accepted") return request.origin === "listing" ? "Listing claimed by shelter" : "Response accepted by shelter";
     if (myResponse?.status === "pending") return "Awaiting shelter decision";
     if (request.status === "completed") return "Request already completed";
     if (request.status === "cancelled") return "Request cancelled by shelter";
@@ -216,9 +217,11 @@ export default function DonationRequestDetailsPage() {
                 <h1 className="text-base font-semibold text-slate-900 truncate md:text-2xl">{request.title}</h1>
                 <p className="text-xs text-slate-500 md:text-sm">Shelter: {shelterProfile?.name || "Shelter"}</p>
               </div>
-              <span className={`hidden md:inline-flex rounded-full px-3 py-1 text-xs font-medium ${urgencyColor(request.urgency)}`}>
-                {request.urgency} urgency
-              </span>
+              {request.origin !== "listing" ? (
+                <span className={`hidden md:inline-flex rounded-full px-3 py-1 text-xs font-medium ${urgencyColor(request.urgency)}`}>
+                  {request.urgency} urgency
+                </span>
+              ) : null}
               <button className="hidden md:inline-flex rounded border border-slate-300 px-3 py-2 text-sm" onClick={() => router.push("/restaurant/home")}>
                 Back
               </button>
@@ -226,9 +229,13 @@ export default function DonationRequestDetailsPage() {
 
             {/* Mobile status + urgency bar */}
             <div className="flex items-center justify-between px-4 py-2.5 border-b border-slate-100 md:hidden">
-              <span className={`rounded-full px-3 py-1 text-xs font-medium ${urgencyColor(request.urgency)}`}>
-                {request.urgency} urgency
-              </span>
+              {request.origin !== "listing" ? (
+                <span className={`rounded-full px-3 py-1 text-xs font-medium ${urgencyColor(request.urgency)}`}>
+                  {request.urgency} urgency
+                </span>
+              ) : (
+                <span className="rounded-full bg-sky-100 px-3 py-1 text-xs font-medium text-sky-800">Your listing</span>
+              )}
               <span className="text-xs text-slate-500">
                 {mapShelterStatusForUi(request.status)}
               </span>
@@ -247,10 +254,12 @@ export default function DonationRequestDetailsPage() {
                   <p className="text-[10px] uppercase tracking-wide text-slate-400 md:text-xs">Servings</p>
                   <p className="mt-1 text-lg font-semibold text-slate-900 md:text-base">{request.quantity || "-"}</p>
                 </div>
-                <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                  <p className="text-[10px] uppercase tracking-wide text-slate-400 md:text-xs">Urgency</p>
-                  <p className="mt-1 text-lg font-semibold text-slate-900 capitalize md:text-base">{request.urgency}</p>
-                </div>
+                {request.origin !== "listing" ? (
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                    <p className="text-[10px] uppercase tracking-wide text-slate-400 md:text-xs">Urgency</p>
+                    <p className="mt-1 text-lg font-semibold text-slate-900 capitalize md:text-base">{request.urgency}</p>
+                  </div>
+                ) : null}
                 <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 col-span-2 md:col-span-2">
                   <p className="text-[10px] uppercase tracking-wide text-slate-400 md:text-xs">Pickup Window</p>
                   <p className="mt-1 text-sm font-medium text-slate-900">{request.pickup_window || "Not provided"}</p>
@@ -274,7 +283,7 @@ export default function DonationRequestDetailsPage() {
 
               {/* Location */}
               <div className="rounded-xl border border-slate-200 p-4">
-                <p className="text-xs uppercase tracking-wide text-slate-400 mb-3">Location</p>
+                <p className="text-xs uppercase tracking-wide text-slate-400 mb-3">Shelter Location</p>
                 <p className="text-sm text-slate-900">
                   {request.address || "Address"}, {request.city || "City"}, {request.state || "ST"} {request.zip_code || ""}
                 </p>
@@ -321,7 +330,7 @@ export default function DonationRequestDetailsPage() {
               {/* My response */}
               {myResponse ? (
                 <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                  <p className="text-xs uppercase tracking-wide text-slate-400 mb-3">Your Response</p>
+                  <p className="text-xs uppercase tracking-wide text-slate-400 mb-3">{request.origin === "listing" ? "Your Listing" : "Your Response"}</p>
                   <div className="space-y-2 text-sm">
                     <div className="flex justify-between">
                       <span className="text-slate-500">Status</span>
@@ -344,6 +353,14 @@ export default function DonationRequestDetailsPage() {
 
               {/* Action buttons */}
               <div className="flex flex-col gap-2 md:flex-row">
+                {isMatchedToMe && request.status === "matched" ? (
+                  <button
+                    className="h-12 w-full rounded-xl bg-emerald-800 text-sm font-semibold text-white md:h-10 md:w-auto md:rounded-md md:px-5"
+                    onClick={() => router.push(`/restaurant/chat/${request.id}`)}
+                  >
+                    Open Chat
+                  </button>
+                ) : null}
                 {canRespond ? (
                   <button
                     className="h-12 w-full rounded-xl bg-emerald-800 text-sm font-semibold text-white md:h-10 md:w-auto md:rounded-md md:px-5"

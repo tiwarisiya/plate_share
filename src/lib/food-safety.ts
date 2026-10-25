@@ -31,6 +31,10 @@ export const SAFETY_CHECKLIST = [
   "The allergens listed are complete to the best of our knowledge.",
 ] as const;
 
+// One statement covering every SAFETY_CHECKLIST item, for quick forms.
+export const SAFETY_CONFIRMATION =
+  "I confirm this food was prepared, cooled and stored following our normal food-safety practices, has been kept at a safe temperature and is within its use-by time, is covered or packaged and labeled, and that the allergens listed are complete to the best of our knowledge.";
+
 export const GOOD_SAMARITAN_NOTE =
   "The Bill Emerson Good Samaritan Food Donation Act (42 U.S.C. 1791) protects donors who give apparently wholesome food in good faith to nonprofit organizations from civil and criminal liability, except in cases of gross negligence or intentional misconduct. This is general information, not legal advice.";
 
@@ -54,6 +58,18 @@ export const EMPTY_FOOD_SAFETY: FoodSafetyValue = {
   checklist: SAFETY_CHECKLIST.map(() => false),
 };
 
+// A datetime-local input value for the given time (default now).
+export function toDateTimeLocal(date: Date = new Date()): string {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+// Fills "prepared at" with the current time if it's empty; the restaurant
+// can change it.
+export function withDefaultPreparedAt(value: FoodSafetyValue): FoodSafetyValue {
+  return value.preparedAt ? value : { ...value, preparedAt: toDateTimeLocal() };
+}
+
 // Returns an error message, or null when the value can be submitted.
 export function validateFoodSafety(value: FoodSafetyValue): string | null {
   if (!value.preparedAt || !value.useBy) return "Enter when the food was prepared and when it must be used by.";
@@ -64,7 +80,7 @@ export function validateFoodSafety(value: FoodSafetyValue): string | null {
     const weight = Number(value.estimatedWeightLbs);
     if (Number.isNaN(weight) || weight <= 0) return "Weight must be a positive number.";
   }
-  if (!value.checklist.every(Boolean)) return "Confirm every item on the food-safety checklist.";
+  if (!value.checklist.every(Boolean)) return "Confirm the food-safety checklist.";
   return null;
 }
 

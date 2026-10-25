@@ -341,8 +341,13 @@ export default function ShelterHomePage() {
   }, [activeTab, loading, hasUnreadRequestNews, markRead]);
 
   useEffect(() => {
-    if (new URLSearchParams(window.location.search).get("tab") === "chats") setActiveTab("chats");
-    void loadDashboard();
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("tab") === "chats") setActiveTab("chats");
+    void loadDashboard().then(() => {
+      if (params.get("claimed")) {
+        setStatusMsg("Listing claimed. It's in your Matched requests below: open the chat to arrange pickup, then confirm when you've received the food.");
+      }
+    });
 
     const timer = setInterval(() => {
       void loadDashboard(true);

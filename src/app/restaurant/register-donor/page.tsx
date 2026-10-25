@@ -78,7 +78,20 @@ export default function RegisterDonor() {
         );
       }
 
-      if (authData.session) {
+      // No session means either email confirmation is on, or the address is
+      // already registered (Supabase doesn't always say which). If the
+      // password signs in, the account is usable: continue to the details
+      // step; otherwise wait for the confirmation email as before.
+      let session = authData.session;
+      if (!session) {
+        const { data: signInData } = await supabase.auth.signInWithPassword({
+          email: formData.email,
+          password: formData.password,
+        });
+        session = signInData.session;
+      }
+
+      if (session) {
         if (typeof window !== "undefined") {
           sessionStorage.removeItem("pendingRestaurantSignup");
         }

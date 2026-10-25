@@ -4,7 +4,7 @@ import React, { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { getSupabaseClient } from "@/lib/supabaseClient";
 import { getCurrentUserRole, isRestaurantProfileComplete } from "@/lib/flow";
-import { EMPTY_FOOD_SAFETY, FoodSafetyValue, foodSafetyColumns, validateFoodSafety } from "@/lib/food-safety";
+import { EMPTY_FOOD_SAFETY, FoodSafetyValue, foodSafetyColumns, validateFoodSafety, withDefaultPreparedAt } from "@/lib/food-safety";
 import { geocode } from "@/lib/geo";
 import { FoodSafetyFields } from "@/components/offers/food-safety-fields";
 import { PickupMethodField } from "@/components/offers/pickup-method-field";
@@ -137,6 +137,7 @@ export default function DonationConfirmPage() {
     setPickupWindow(response?.proposed_pickup_window || parsed.pickup_window || restaurantDefaults?.default_pickup_window || "");
     setResponseNote(response?.response_note || "");
     setFoodType(restaurantDefaults?.cuisine || "");
+    setFoodSafety(withDefaultPreparedAt);
     setExistingResponseStatus(response?.status || null);
 
     setLoading(false);
@@ -293,7 +294,7 @@ export default function DonationConfirmPage() {
               <PickupAddressFields value={pickupAddress} onChange={setPickupAddress} defaults={defaults} />
               <PickupMethodField value={pickupMethod} onChange={setPickupMethod} />
 
-              <FoodSafetyFields value={foodSafety} onChange={setFoodSafety} />
+              <FoodSafetyFields value={foodSafety} onChange={setFoodSafety} singleConfirmation />
 
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">Response note (optional)</label>
