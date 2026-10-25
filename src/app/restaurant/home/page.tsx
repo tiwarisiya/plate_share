@@ -392,7 +392,7 @@ export default function RestaurantHome() {
       />
       <MobileBottomNav items={navItems} activeId={activeTab} />
 
-      <main className="flex-1 px-4 pt-[72px] pb-20 md:px-6 md:py-6 md:pt-6 md:pb-6">
+      <main className="min-w-0 flex-1 px-4 pt-[72px] pb-20 md:px-6 md:py-6 md:pt-6 md:pb-6">
         <div className="mx-auto max-w-7xl">
           {/* Page title */}
           <div className="mb-4">

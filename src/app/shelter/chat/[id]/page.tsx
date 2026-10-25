@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { getSupabaseClient } from "@/lib/supabaseClient";
 import { getRoleGuardRedirect, getLoginPathForRole } from "@/lib/flow";
@@ -28,8 +28,6 @@ export default function ShelterChatPage() {
   const [partnerName, setPartnerName] = useState("Restaurant");
   const [requestTitle, setRequestTitle] = useState("Matched Request");
 
-  const title = useMemo(() => `${partnerName} Chat`, [partnerName]);
-
   const loadMessages = async () => {
     const supabase = getSupabaseClient();
     const {
@@ -49,7 +47,9 @@ export default function ShelterChatPage() {
 
     const { data: requestRow } = await supabase
       .from("shelter_requests")
-      .select("id, shelter_id, title, status")
+      .select(
+        "id, shelter_id, title, status, matched_donation:donations!shelter_requests_matched_donation_id_fkey(id, restaurant_id, restaurant_name)"
+      )
       .eq("id", requestId)
       .single();
 
@@ -65,21 +65,26 @@ export default function ShelterChatPage() {
 
     setRequestTitle(requestRow?.title || "Matched Request");
 
-    const { data: acceptedResponse } = await supabase
-      .from("request_responses")
-      .select("restaurant_id")
-      .eq("request_id", requestId)
-      .eq("status", "accepted")
-      .maybeSingle();
+    // Claimed listings have no accepted response, so the matched donation is the reliable link to the restaurant.
+    let restaurantId: string | null = requestRow?.matched_donation?.restaurant_id || null;
+    if (!restaurantId) {
+      const { data: acceptedResponse } = await supabase
+        .from("request_responses")
+        .select("restaurant_id")
+        .eq("request_id", requestId)
+        .eq("status", "accepted")
+        .maybeSingle();
+      restaurantId = acceptedResponse?.restaurant_id || null;
+    }
 
-    if (acceptedResponse?.restaurant_id) {
+    if (restaurantId) {
       const { data: profileRow } = await supabase
         .from("profiles")
         .select("name")
-        .eq("id", acceptedResponse.restaurant_id)
+        .eq("id", restaurantId)
         .maybeSingle();
 
-      setPartnerName(profileRow?.name || "Restaurant");
+      setPartnerName(profileRow?.name || requestRow?.matched_donation?.restaurant_name || "Restaurant");
     }
 
     const { data, error: messagesError } = await supabase
@@ -166,7 +171,7 @@ export default function ShelterChatPage() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 p-0 md:p-6">
+    <div className="min-h-screen overflow-x-hidden bg-slate-50 p-0 md:p-6">
       <main className="mx-auto max-w-5xl rounded-none border-0 bg-white md:rounded md:border md:border-slate-200 md:shadow-sm">
         {/* Chat header */}
         <div className="flex items-center gap-3 border-b border-slate-200 px-4 py-3">
@@ -177,8 +182,8 @@ export default function ShelterChatPage() {
             🍽️
           </div>
           <div className="flex-1 min-w-0">
-            <h1 className="text-base font-semibold text-slate-900 truncate md:text-2xl">{title}</h1>
-            <p className="text-xs text-slate-500 md:text-sm">{requestTitle}</p>
+            <h1 className="text-base font-semibold text-slate-900 truncate md:text-2xl">{partnerName}</h1>
+            <p className="text-xs text-slate-500 truncate md:text-sm">Re: {requestTitle}</p>
           </div>
           <Button variant="secondary" className="hidden md:inline-flex" onClick={() => router.push("/shelter/home")}>
             Back
@@ -207,7 +212,7 @@ export default function ShelterChatPage() {
                             : "rounded-bl-sm border border-slate-200 bg-white text-slate-900"
                         }`}
                       >
-                        <p>{msg.message}</p>
+                        <p className="whitespace-pre-wrap [overflow-wrap:anywhere]">{msg.message}</p>
                         <p className={`mt-1 text-[10px] ${msg.sender_role === "shelter" ? "text-emerald-200" : "text-slate-400"}`}>
                           {new Date(msg.created_at).toLocaleString()}
                         </p>
@@ -227,7 +232,7 @@ export default function ShelterChatPage() {
                 onChange={(e) => setDraft(e.target.value)}
                 placeholder="Type a message"
                 disabled={!canChat}
-                className="h-11 flex-1 rounded-full border border-slate-300 px-4 text-sm focus:border-emerald-700 focus:outline-none md:rounded-md"
+                className="h-11 min-w-0 flex-1 rounded-full border border-slate-300 px-4 text-sm focus:border-emerald-700 focus:outline-none md:rounded-md"
               />
               <button
                 type="submit"

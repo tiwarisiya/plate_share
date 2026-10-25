@@ -98,7 +98,7 @@ export function RoleShell({ role, activeId, userId, children }: RoleShellProps) 
       <MobileHeader title="Plate Share" subtitle={subtitle} action={bell} />
       <Sidebar title="Plate Share" subtitle={subtitle} activeId={activeId} items={items} headerAction={bell} />
       <MobileBottomNav items={items} activeId={activeId} />
-      <main className="flex-1 px-4 pt-[72px] pb-20 md:px-6 md:py-6 md:pt-6 md:pb-6">{children}</main>
+      <main className="min-w-0 flex-1 px-4 pt-[72px] pb-20 md:px-6 md:py-6 md:pt-6 md:pb-6">{children}</main>
     </div>
   );
 }

@@ -272,6 +272,25 @@ export default function ShelterHomePage() {
       setChatInboxItems([]);
     } else {
       const matchedRequestIds = matchedRequests.map((row) => row.id);
+
+      // Claimed listings have no accepted response, so resolve their restaurant through the matched donation.
+      const restaurantByDonationId: Record<string, string> = {};
+      const matchedDonationIds = matchedRequests.map((row) => row.matched_donation_id).filter((id): id is string => !!id);
+      if (matchedDonationIds.length > 0) {
+        const { data: donationRows } = await supabase.from("donations").select("id, restaurant_id").in("id", matchedDonationIds);
+        (donationRows || []).forEach((row: { id: string; restaurant_id: string | null }) => {
+          if (row.restaurant_id) restaurantByDonationId[row.id] = row.restaurant_id;
+        });
+
+        const missingIds = Array.from(new Set(Object.values(restaurantByDonationId))).filter((id) => !names[id]);
+        if (missingIds.length > 0) {
+          const { data: extraProfiles } = await supabase.from("profiles").select("id, name").in("id", missingIds);
+          (extraProfiles || []).forEach((row: any) => {
+            names[row.id] = row.name || "Restaurant";
+          });
+          setRestaurantNames({ ...names });
+        }
+      }
       const { data: chatRows } = await supabase
         .from("chat_messages")
         .select("request_id, sender_role, message, created_at")
@@ -292,7 +311,8 @@ export default function ShelterHomePage() {
       const inbox = matchedRequests
         .map((row) => {
           const acceptedResponse = (grouped[row.id] || []).find((item) => item.status === "accepted");
-          const partnerName = acceptedResponse ? names[acceptedResponse.restaurant_id] || "Restaurant" : "Restaurant";
+          const restaurantId = (row.matched_donation_id && restaurantByDonationId[row.matched_donation_id]) || acceptedResponse?.restaurant_id;
+          const partnerName = restaurantId ? names[restaurantId] || "Restaurant" : "Restaurant";
           const latest = latestByRequestId[row.id];
           const fallbackTime = new Date(row.created_at).getTime();
           const latestTime = latest ? new Date(latest.created_at).getTime() : fallbackTime;
@@ -645,7 +665,7 @@ export default function ShelterHomePage() {
       />
       <MobileBottomNav items={navItems} activeId={activeTab} />
 
-      <main className="flex-1 px-4 pt-[72px] pb-20 md:px-6 md:py-6 md:pt-6 md:pb-6">
+      <main className="min-w-0 flex-1 px-4 pt-[72px] pb-20 md:px-6 md:py-6 md:pt-6 md:pb-6">
         <div className="mx-auto max-w-7xl">
           <div className="mb-4">
             <h1 className="text-lg font-semibold text-slate-900 md:text-2xl">
