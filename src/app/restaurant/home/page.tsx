@@ -14,6 +14,7 @@ import { MobileHeader, MobileBottomNav } from "@/components/ui/mobile-nav";
 import { Button } from "@/components/ui/button";
 import { CHAT_KINDS, NotificationKind, useNotifications } from "@/lib/notifications";
 import { NotificationBell } from "@/components/ui/notification-bell";
+import { HANDSHAKE_SELECT, PickupHandshake } from "@/components/offers/pickup-handshake";
 import { Coordinates, ProfileLocation, distanceMiles, ensureProfileLocation, formatDistance, geocode, sortByDistance } from "@/lib/geo";
 
 type Tab = "open" | "matched" | "completed";
@@ -37,6 +38,9 @@ type RequestRow = {
   matched_donation_id: string | null;
   latitude: number | null;
   longitude: number | null;
+  origin: "request" | "listing";
+  restaurant_pickup_confirmed_at: string | null;
+  shelter_pickup_confirmed_at: string | null;
 };
 
 type ResponseRow = {
@@ -131,7 +135,7 @@ export default function RestaurantHome() {
     const [{ data: requestRows, error: requestError }, { data: myResponses, error: responsesError }] = await Promise.all([
       supabase
         .from("shelter_requests")
-        .select("id, shelter_id, title, quantity, food_needed, pickup_window, urgency, notes, city, state, zip_code, status, created_at, matched_donation_id, latitude, longitude")
+        .select(`id, shelter_id, title, quantity, food_needed, pickup_window, urgency, notes, city, state, zip_code, status, created_at, matched_donation_id, latitude, longitude, origin, ${HANDSHAKE_SELECT}`)
         .in("status", ["open", "responded", "matched", "completed", "cancelled"])
         .order("created_at", { ascending: false }),
       supabase
@@ -292,7 +296,7 @@ export default function RestaurantHome() {
   // Requests created before location support have no coordinates until
   // their shelter signs in again; estimate those from the ZIP code.
   const estimateMissingLocations = async (rows: RequestRow[]) => {
-    const zips = Array.from(new Set(rows.filter((row) => row.latitude == null && row.zip_code).map((row) => row.zip_code as string)));
+    const zips = Array.from(new Set(rows.filter((row) => row.latitude == null && /^\d{5}$/.test(row.zip_code || "")).map((row) => row.zip_code as string)));
     const found: Record<string, Coordinates> = {};
     for (const zip of zips) {
       const located = await geocode({ address: null, city: null, state: null, zip });
@@ -560,10 +564,31 @@ export default function RestaurantHome() {
                         </p>
                         <p className="text-slate-700">{mapShelterStatusForUi(row.status)}</p>
                       </div>
+                      <p className="text-slate-600">
+                        {row.origin === "listing" ? "Your listing, claimed by " : "Shelter: "}
+                        {shelterNamesById[row.shelter_id] || "Shelter"}
+                      </p>
                       <p className="text-slate-600">Pickup window: {row.pickup_window || "Not set"}</p>
-                      <button className="mt-2 rounded border px-3 py-1 text-xs" onClick={() => router.push(`/restaurant/donation/${row.id}`)}>
-                        View Coordination Details
-                      </button>
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        <button className="rounded bg-emerald-800 px-3 py-1 text-xs text-white" onClick={() => router.push(`/restaurant/chat/${row.id}`)}>
+                          Open Chat
+                        </button>
+                        <button className="rounded border px-3 py-1 text-xs" onClick={() => router.push(`/restaurant/donation/${row.id}`)}>
+                          View Coordination Details
+                        </button>
+                      </div>
+                      <div className="mt-2">
+                        <PickupHandshake
+                          requestId={row.id}
+                          role="restaurant"
+                          restaurantConfirmedAt={row.restaurant_pickup_confirmed_at}
+                          shelterConfirmedAt={row.shelter_pickup_confirmed_at}
+                          onChange={async (message) => {
+                            await loadDashboard();
+                            setStatusMsg(message);
+                          }}
+                        />
+                      </div>
                     </div>
                   ))
                 )

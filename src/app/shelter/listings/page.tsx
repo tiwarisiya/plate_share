@@ -51,7 +51,12 @@ export default function ShelterListingsPage() {
       })
       .subscribe();
 
+    // Realtime may not cover donations on every database, so also refresh
+    // every 15s like the dashboards do.
+    const timer = setInterval(reload, 15000);
+
     return () => {
+      clearInterval(timer);
       void supabase.removeChannel(channel);
     };
   }, []);
@@ -79,7 +84,7 @@ export default function ShelterListingsPage() {
       return;
     }
 
-    router.push("/shelter/home");
+    router.push("/shelter/home?claimed=1");
   };
 
   return (

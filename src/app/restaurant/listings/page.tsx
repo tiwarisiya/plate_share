@@ -12,6 +12,8 @@ import { PickupMethodField } from "@/components/offers/pickup-method-field";
 import { PhotoScan, applyScanToFoodSafety, linkFoodScan } from "@/components/offers/photo-scan";
 import { PickupMethod } from "@/lib/delivery";
 import { OfferSummary } from "@/components/offers/offer-summary";
+import { HANDSHAKE_SELECT, PickupHandshake } from "@/components/offers/pickup-handshake";
+import { useRouter } from "next/navigation";
 import {
   AddressDefaults,
   EMPTY_PICKUP_ADDRESS,
@@ -30,6 +32,14 @@ type RestaurantDefaults = AddressDefaults & {
   longitude: number | null;
 };
 
+// The request a claimed listing turned into (chat, pickup handshake).
+type ClaimRow = {
+  id: string;
+  matched_donation_id: string;
+  restaurant_pickup_confirmed_at: string | null;
+  shelter_pickup_confirmed_at: string | null;
+};
+
 const STATUS_LABEL: Record<ListingRow["status"], string> = {
   posted: "Available",
   matched: "Claimed",
@@ -41,7 +51,9 @@ export default function RestaurantListingsPage() {
   const userId = useRoleGuard("restaurant");
   const [defaults, setDefaults] = useState<RestaurantDefaults | null>(null);
   const [listings, setListings] = useState<ListingRow[]>([]);
+  const router = useRouter();
   const [shelterNames, setShelterNames] = useState<Record<string, string>>({});
+  const [claimsByListing, setClaimsByListing] = useState<Record<string, ClaimRow>>({});
   const [msg, setMsg] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -91,6 +103,19 @@ export default function RestaurantListingsPage() {
         });
         setShelterNames(names);
       }
+
+      const claimedIds = parsed.filter((row) => row.status === "matched" || row.status === "completed").map((row) => row.id);
+      if (claimedIds.length > 0) {
+        const { data: claims } = await supabase
+          .from("shelter_requests")
+          .select(`id, matched_donation_id, ${HANDSHAKE_SELECT}`)
+          .in("matched_donation_id", claimedIds);
+        const byListing: Record<string, ClaimRow> = {};
+        ((claims || []) as ClaimRow[]).forEach((claim) => {
+          byListing[claim.matched_donation_id] = claim;
+        });
+        setClaimsByListing(byListing);
+      }
     };
 
     void load();
@@ -106,7 +131,12 @@ export default function RestaurantListingsPage() {
       })
       .subscribe();
 
+    // Realtime may not cover donations on every database, so also refresh
+    // every 15s like the dashboards do.
+    const timer = setInterval(reload, 15000);
+
     return () => {
+      clearInterval(timer);
       void supabase.removeChannel(channel);
     };
   }, [userId]);
@@ -295,6 +325,30 @@ export default function RestaurantListingsPage() {
                       <OfferSummary offer={listing} />
                       {listing.status === "posted" ? (
                         <Button size="sm" variant="secondary" className="mt-2" onClick={() => void withdraw(listing)}>Withdraw</Button>
+                      ) : null}
+                      {claimsByListing[listing.id] ? (
+                        <div className="mt-2 space-y-2">
+                          <div className="flex flex-wrap gap-2">
+                            {listing.status === "matched" ? (
+                              <Button size="sm" onClick={() => router.push(`/restaurant/chat/${claimsByListing[listing.id].id}`)}>Open Chat</Button>
+                            ) : null}
+                            <Button size="sm" variant="secondary" onClick={() => router.push(`/restaurant/donation/${claimsByListing[listing.id].id}`)}>
+                              View pickup details
+                            </Button>
+                          </div>
+                          {listing.status === "matched" ? (
+                            <PickupHandshake
+                              requestId={claimsByListing[listing.id].id}
+                              role="restaurant"
+                              restaurantConfirmedAt={claimsByListing[listing.id].restaurant_pickup_confirmed_at}
+                              shelterConfirmedAt={claimsByListing[listing.id].shelter_pickup_confirmed_at}
+                              onChange={(message) => {
+                                setMsg(message);
+                                reload();
+                              }}
+                            />
+                          ) : null}
+                        </div>
                       ) : null}
                     </div>
                   </div>
